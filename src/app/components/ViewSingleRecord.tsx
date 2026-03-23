@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "react-router";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ArrowLeft,
   School,
@@ -51,21 +51,46 @@ export function ViewSingleRecord() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [openMessage, setOpenMessage] = useState("");
+  const [record, setRecord] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const storedRecord = loadRecords().find((item) => item.id === id);
-  const record = storedRecord
-    ? {
-        controlNumber: storedRecord.controlNumber,
-        school: storedRecord.school,
-        course: storedRecord.course,
-        hours: storedRecord.hours || "-",
-        dateReceived: storedRecord.dateReceived || "-",
-        status: storedRecord.status,
-        workflow: storedRecord.workflow,
-        moa: storedRecord.moaValue || "-",
-        legalOpinion: storedRecord.legalOpinionValue || "-",
+  useEffect(() => {
+    const fetchRecord = async () => {
+      try {
+        const records = await loadRecords();
+        const storedRecord = records.find((item) => item.id === id);
+        if (storedRecord) {
+          setRecord({
+            controlNumber: storedRecord.controlNumber,
+            school: storedRecord.school,
+            course: storedRecord.course,
+            hours: storedRecord.hours || "-",
+            dateReceived: storedRecord.dateReceived || "-",
+            status: storedRecord.status,
+            workflow: storedRecord.workflow,
+            moa: storedRecord.moaValue || "-",
+            legalOpinion: storedRecord.legalOpinionValue || "-",
+          });
+        }
+      } catch (error) {
+        console.error('Error loading record:', error);
+      } finally {
+        setLoading(false);
       }
-    : null;
+    };
+
+    if (id) {
+      fetchRecord();
+    }
+  }, [id]);
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="text-center">Loading record...</div>
+      </div>
+    );
+  }
 
   if (!record) {
     return (

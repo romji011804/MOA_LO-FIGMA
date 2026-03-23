@@ -4,6 +4,7 @@ import { Dashboard } from "./components/Dashboard";
 import { AddRecord } from "./components/AddRecord";
 import { ViewRecords } from "./components/ViewRecords";
 import { ViewSingleRecord } from "./components/ViewSingleRecord";
+import { CloudSync } from "./components/CloudSync";
 
 export const router = createBrowserRouter([
   {
@@ -14,6 +15,7 @@ export const router = createBrowserRouter([
       { path: "add-record", Component: AddRecord },
       { path: "view-records", Component: ViewRecords },
       { path: "record/:id", Component: ViewSingleRecord },
+      { path: "cloud-sync", Component: CloudSync },
     ],
   },
 ]);

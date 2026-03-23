@@ -1,5 +1,5 @@
 import { NavLink } from "react-router";
-import { LayoutDashboard, Plus, FileText, Moon, Sun } from "lucide-react";
+import { LayoutDashboard, Plus, FileText, Moon, Sun, Cloud } from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
 
@@ -15,6 +15,7 @@ export function Sidebar() {
     { path: "/", label: "Dashboard", icon: LayoutDashboard },
     { path: "/add-record", label: "Add Record", icon: Plus },
     { path: "/view-records", label: "View Records", icon: FileText },
+    { path: "/cloud-sync", label: "Cloud Sync", icon: Cloud },
   ];
 
   return (

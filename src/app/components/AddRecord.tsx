@@ -12,8 +12,8 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
-import { loadRecords, saveRecords, type RecordItem } from "../records";
-import { isIndexedDbAvailable, saveFileBlob } from "../fileStorage";
+import { loadRecords, createRecord, updateRecord, type RecordItem } from "../records";
+import { isStorageAvailable, saveFileBlob } from "../fileStorage";
 
 /** PDF/DOC/DOCX — avoid nesting <input type="file"> inside <button> (invalid HTML; breaks pickers in some browsers). */
 const DOC_ACCEPT =
@@ -59,28 +59,38 @@ export function AddRecord() {
 
   useEffect(() => {
     if (!editId) return;
-    const record = loadRecords().find((item) => item.id === editId);
-    if (!record) return;
-    setSchool(record.school);
-    setCourse(record.course);
-    setHours(record.hours || "");
-    setDateReceived(record.dateReceived || "");
-    setStatus(record.status);
-    setWorkflow(record.workflow);
-    setLoUploadType(record.legalOpinionType || "file");
-    setMoaUploadType(record.moaType || "file");
-    if (record.legalOpinionType === "link") {
-      setLegalOpinionLink(record.legalOpinionValue || "");
-    } else {
-      setLegalOpinionFileName(record.legalOpinionFileName || "");
-      setLegalOpinionFileData(record.legalOpinionValue || "");
-    }
-    if (record.moaType === "link") {
-      setMoaLink(record.moaValue || "");
-    } else {
-      setMoaFileName(record.moaFileName || "");
-      setMoaFileData(record.moaValue || "");
-    }
+
+    const fetchRecord = async () => {
+      try {
+        const records = await loadRecords();
+        const record = records.find((item) => item.id === editId);
+        if (!record) return;
+        setSchool(record.school);
+        setCourse(record.course);
+        setHours(record.hours || "");
+        setDateReceived(record.dateReceived || "");
+        setStatus(record.status);
+        setWorkflow(record.workflow);
+        setLoUploadType(record.legalOpinionType || "file");
+        setMoaUploadType(record.moaType || "file");
+        if (record.legalOpinionType === "link") {
+          setLegalOpinionLink(record.legalOpinionValue || "");
+        } else {
+          setLegalOpinionFileName(record.legalOpinionFileName || "");
+          setLegalOpinionFileData(record.legalOpinionValue || "");
+        }
+        if (record.moaType === "link") {
+          setMoaLink(record.moaValue || "");
+        } else {
+          setMoaFileName(record.moaFileName || "");
+          setMoaFileData(record.moaValue || "");
+        }
+      } catch (error) {
+        console.error('Error loading record for editing:', error);
+      }
+    };
+
+    fetchRecord();
   }, [editId]);
 
   const generateControlNumber = (records: RecordItem[]) => {
@@ -124,7 +134,7 @@ export function AddRecord() {
       return;
     }
 
-    const records = loadRecords();
+    const records = await loadRecords();
     const editingRecord = editId ? records.find((record) => record.id === editId) : null;
     let nextMoaValue = moaUploadType === "file" ? moaFileData : moaLink.trim();
     let nextLoValue =
@@ -132,9 +142,9 @@ export function AddRecord() {
     const mustStoreNewFile =
       (moaUploadType === "file" && !!moaFile) ||
       (loUploadType === "file" && !!legalOpinionFile);
-    if (mustStoreNewFile && !isIndexedDbAvailable()) {
+    if (mustStoreNewFile && !isStorageAvailable()) {
       setFormError(
-        "File storage is unavailable (IndexedDB disabled). Use “Paste Link” or enable storage for this site.",
+        "File storage is unavailable. Please check if the server is running.",
       );
       return;
     }
@@ -149,8 +159,7 @@ export function AddRecord() {
       setFormError("Failed to store uploaded PDF/document. Please try again.");
       return;
     }
-    const newRecord: RecordItem = {
-      id: editingRecord?.id || String(Date.now()),
+    const recordData = {
       controlNumber: editingRecord?.controlNumber || generateControlNumber(records),
       school: school.trim(),
       course: course.trim(),
@@ -168,12 +177,18 @@ export function AddRecord() {
         loUploadType === "file" && legalOpinionFileName ? legalOpinionFileName : undefined,
     };
 
-    const updated = editingRecord
-      ? records.map((record) => (record.id === editingRecord.id ? newRecord : record))
-      : [...records, newRecord];
-    saveRecords(updated);
-    setFormError("");
-    navigate("/view-records");
+    try {
+      if (editingRecord) {
+        await updateRecord(editingRecord.id, recordData);
+      } else {
+        await createRecord(recordData);
+      }
+      setFormError("");
+      navigate("/view-records");
+    } catch (error) {
+      setFormError("Failed to save record. Please try again.");
+      console.error('Error saving record:', error);
+    }
   };
 
   return (

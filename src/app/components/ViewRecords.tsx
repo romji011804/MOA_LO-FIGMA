@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, Pencil, Trash2, Pin, PinOff, Link2 } from "lucide-react";
 import { useNavigate } from "react-router";
 import {
@@ -11,7 +11,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { loadRecords, saveRecords, type RecordItem } from "../records";
+import { loadRecords, deleteRecord, type RecordItem } from "../records";
 import { getFileBlob } from "../fileStorage";
 
 export function ViewRecords() {
@@ -23,8 +23,23 @@ export function ViewRecords() {
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [openMessage, setOpenMessage] = useState("");
+  const [allRecords, setAllRecords] = useState<RecordItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const [allRecords, setAllRecords] = useState<RecordItem[]>(() => loadRecords());
+  useEffect(() => {
+    const fetchRecords = async () => {
+      try {
+        const records = await loadRecords();
+        setAllRecords(records);
+      } catch (error) {
+        console.error('Error loading records:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecords();
+  }, []);
 
   const toggleSelect = (id: string) => {
     setSelectedIds((current) =>
@@ -38,15 +53,20 @@ export function ViewRecords() {
     );
   };
 
-  const deleteRecords = (ids: string[]) => {
+  const deleteRecords = async (ids: string[]) => {
     if (ids.length === 0) return;
-    setAllRecords((current) => {
-      const updated = current.filter((record) => !ids.includes(record.id));
-      saveRecords(updated);
-      return updated;
-    });
-    setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
-    setPinnedIds((current) => current.filter((id) => !ids.includes(id)));
+
+    try {
+      for (const id of ids) {
+        await deleteRecord(id);
+      }
+      setAllRecords((current) => current.filter((record) => !ids.includes(record.id)));
+      setSelectedIds((current) => current.filter((id) => !ids.includes(id)));
+      setPinnedIds((current) => current.filter((id) => !ids.includes(id)));
+    } catch (error) {
+      console.error('Error deleting records:', error);
+      // Could add error handling UI here
+    }
   };
 
   const requestDelete = (ids: string[]) => {
@@ -142,6 +162,14 @@ export function ViewRecords() {
         return "bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-gray-300";
     }
   };
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="text-center">Loading records...</div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-8">

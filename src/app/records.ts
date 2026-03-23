@@ -1,3 +1,5 @@
+const API_BASE = 'http://localhost:3001/api';
+
 export interface RecordItem {
   id: string;
   controlNumber: string;
@@ -13,6 +15,7 @@ export interface RecordItem {
   legalOpinionValue?: string;
   legalOpinionFileName?: string;
   legalOpinionType?: "file" | "link";
+  is_synced?: boolean;
 }
 
 export const DEFAULT_RECORDS: RecordItem[] = [
@@ -66,28 +69,65 @@ export const DEFAULT_RECORDS: RecordItem[] = [
   },
 ];
 
-const STORAGE_KEY = "moa-lo-records";
-
-export function loadRecords(): RecordItem[] {
-  if (typeof window === "undefined") {
-    return DEFAULT_RECORDS;
-  }
+export async function loadRecords(): Promise<RecordItem[]> {
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return DEFAULT_RECORDS;
+    const response = await fetch(`${API_BASE}/records`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch records');
     }
-    const parsed = JSON.parse(raw) as RecordItem[];
-    return Array.isArray(parsed) ? parsed : DEFAULT_RECORDS;
-  } catch {
+    const records = await response.json();
+    return records.length > 0 ? records : DEFAULT_RECORDS;
+  } catch (error) {
+    console.error('Error loading records from API, using defaults:', error);
     return DEFAULT_RECORDS;
   }
 }
 
-export function saveRecords(records: RecordItem[]) {
-  if (typeof window === "undefined") {
-    return;
+export async function saveRecords(records: RecordItem[]): Promise<void> {
+  // This function is now handled by individual record operations
+  // Keeping for backward compatibility
+  console.log('saveRecords called - use individual record operations instead');
+}
+
+export async function createRecord(record: Omit<RecordItem, 'id'>): Promise<RecordItem> {
+  const response = await fetch(`${API_BASE}/records`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(record),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to create record');
   }
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+
+  return response.json();
+}
+
+export async function updateRecord(id: string, record: Omit<RecordItem, 'id'>): Promise<RecordItem> {
+  const response = await fetch(`${API_BASE}/records/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(record),
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to update record');
+  }
+
+  return response.json();
+}
+
+export async function deleteRecord(id: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/records/${id}`, {
+    method: 'DELETE',
+  });
+
+  if (!response.ok) {
+    throw new Error('Failed to delete record');
+  }
 }
 

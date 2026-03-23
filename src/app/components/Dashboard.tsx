@@ -1,6 +1,7 @@
 import { FileText, Clock, CheckCircle, AlertCircle, FileWarning } from "lucide-react";
 import { useNavigate } from "react-router";
 import { loadRecords } from "../records";
+import { useEffect, useState } from "react";
 
 interface StatCardProps {
   title: string;
@@ -52,7 +53,32 @@ function AlertCard({ title, count, icon, color }: AlertCardProps) {
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const records = loadRecords();
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchRecords = async () => {
+      try {
+        const data = await loadRecords();
+        setRecords(data);
+      } catch (error) {
+        console.error('Error loading records:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRecords();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="p-8">
+        <div className="text-center">Loading dashboard...</div>
+      </div>
+    );
+  }
+
   const totalRecords = records.length;
   const ongoingRecords = records.filter((record) => record.status === "Ongoing").length;
   const completedRecords = records.filter((record) => record.status === "Completed").length;

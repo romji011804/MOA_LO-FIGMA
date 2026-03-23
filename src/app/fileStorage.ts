@@ -1,65 +1,77 @@
-const DB_NAME = "moa-lo-files-db";
-const STORE_NAME = "files";
-const DB_VERSION = 1;
+const API_BASE = 'http://localhost:3001/api';
 
-function newIdbKey(): string {
+function newStorageKey(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `idb:${crypto.randomUUID()}`;
+    return `ls:${crypto.randomUUID()}`;
   }
-  return `idb:${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  return `ls:${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-export function isIndexedDbAvailable(): boolean {
-  return typeof indexedDB !== "undefined";
+export function isStorageAvailable(): boolean {
+  return true; // API is always available if server is running
 }
 
-function openDb(): Promise<IDBDatabase> {
+function blobToBase64(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error);
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
   });
 }
 
-export async function saveFileBlob(file: File | Blob): Promise<string> {
-  if (!isIndexedDbAvailable()) {
-    throw new Error("IndexedDB is not available in this environment.");
+function base64ToBlob(base64: string): Blob {
+  const [header, data] = base64.split(",");
+  const mime = header.split(":")[1].split(";")[0];
+  const binary = atob(data);
+  const array = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) {
+    array[i] = binary.charCodeAt(i);
   }
-  const key = newIdbKey();
-  const db = await openDb();
+  return new Blob([array], { type: mime });
+}
+
+export async function saveFileBlob(file: File | Blob): Promise<string> {
   const toStore =
     file instanceof File
       ? new Blob([await file.arrayBuffer()], { type: file.type || "application/octet-stream" })
       : file;
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    tx.objectStore(STORE_NAME).put(toStore, key);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error);
+
+  const base64 = await blobToBase64(toStore);
+  const fileName = file instanceof File ? file.name : 'uploaded-file';
+
+  const response = await fetch(`${API_BASE}/files`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      fileName,
+      fileData: base64,
+      mimeType: toStore.type || 'application/octet-stream',
+    }),
   });
-  db.close();
-  return key;
+
+  if (!response.ok) {
+    throw new Error('Failed to upload file');
+  }
+
+  const result = await response.json();
+  return result.id;
 }
 
 export async function getFileBlob(key: string): Promise<Blob | null> {
-  const db = await openDb();
-  const value = await new Promise<Blob | null>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readonly");
-    const request = tx.objectStore(STORE_NAME).get(key);
-    request.onsuccess = () => {
-      const result = request.result;
-      resolve(result instanceof Blob ? result : null);
-    };
-    request.onerror = () => reject(request.error);
-  });
-  db.close();
-  return value;
+  try {
+    const response = await fetch(`${API_BASE}/files/${key}`);
+    if (!response.ok) {
+      return null;
+    }
+
+    const blob = await response.blob();
+    return blob;
+  } catch (error) {
+    console.error('Error fetching file:', error);
+    return null;
+  }
 }
 
