@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Search, Filter, Pencil, Trash2, Pin, PinOff, Link2 } from "lucide-react";
+import { Search, Filter, Pencil, Trash2, Pin, PinOff, Link2, FileX2, PlusCircle } from "lucide-react";
 import { useNavigate } from "react-router";
 import {
   AlertDialog,
@@ -91,28 +91,7 @@ export function ViewRecords() {
       return;
     }
     if (type === "file") {
-      if (value.startsWith("idb:")) {
-        try {
-          const blob = await getFileBlob(value);
-          if (!blob) {
-            setOpenMessage("Saved file was not found. Please re-upload it.");
-            return;
-          }
-          const blobUrl = URL.createObjectURL(blob);
-          const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
-          if (!opened) {
-            setOpenMessage("Popup blocked. Please allow popups to open files.");
-            URL.revokeObjectURL(blobUrl);
-            return;
-          }
-          setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
-          setOpenMessage("");
-          return;
-        } catch {
-          setOpenMessage("Unable to open saved file.");
-          return;
-        }
-      }
+      // Direct data URI or remote URL — open immediately
       if (value.startsWith("data:") || /^https?:\/\//i.test(value)) {
         const opened = window.open(value, "_blank", "noopener,noreferrer");
         if (!opened) {
@@ -122,11 +101,33 @@ export function ViewRecords() {
         setOpenMessage("");
         return;
       }
-      setOpenMessage("Unable to open saved file.");
-      return;
+      // Any other value (plain UUID from API, or legacy idb: key) — fetch via API
+      try {
+        const blob = await getFileBlob(value);
+        if (!blob) {
+          setOpenMessage("Saved file was not found. Please re-upload it.");
+          return;
+        }
+        const blobUrl = URL.createObjectURL(blob);
+        const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
+        if (!opened) {
+          setOpenMessage("Popup blocked. Please allow popups to open files.");
+          URL.revokeObjectURL(blobUrl);
+          return;
+        }
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+        setOpenMessage("");
+        return;
+      } catch {
+        setOpenMessage("Unable to open saved file.");
+        return;
+      }
     }
     setOpenMessage("No document available.");
   };
+
+
+  const isEmpty = allRecords.length === 0;
 
   const filteredRecords = allRecords.filter((record) => {
     const matchesSearch =
@@ -189,7 +190,7 @@ export function ViewRecords() {
               {openMessage}
             </div>
           )}
-          {selectedIds.length > 0 && (
+          {!isEmpty && selectedIds.length > 0 && (
             <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-900/20 px-4 py-3">
               <p className="text-sm text-blue-900 dark:text-blue-200">
                 {selectedIds.length} record{selectedIds.length > 1 ? "s" : ""} selected
@@ -259,8 +260,10 @@ export function ViewRecords() {
                 <th className="px-4 py-3">
                   <input
                     type="checkbox"
+                    disabled={isEmpty}
                     checked={allVisibleSelected}
                     onChange={(event) => {
+                      if (isEmpty) return;
                       if (event.target.checked) {
                         setSelectedIds((current) => [
                           ...new Set([...current, ...sortedRecords.map((record) => record.id)]),
@@ -273,7 +276,7 @@ export function ViewRecords() {
                         );
                       }
                     }}
-                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
                   />
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -413,15 +416,44 @@ export function ViewRecords() {
                   </td>
                 </tr>
               ))}
+
+              {/* Filtered-empty state: records exist but none match search/filter */}
+              {!isEmpty && sortedRecords.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="px-6 py-16 text-center">
+                    <Search className="mx-auto h-10 w-10 text-gray-300 dark:text-gray-600 mb-3" />
+                    <p className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                      No records match your search or filter.
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                      Try adjusting your search term or filter selection.
+                    </p>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
 
-        {filteredRecords.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-gray-500 dark:text-gray-400">
-              No records found matching your search criteria.
+        {/* True empty state: no records at all */}
+        {isEmpty && (
+          <div className="flex flex-col items-center justify-center py-24 px-8 text-center">
+            <div className="rounded-full bg-gray-100 dark:bg-gray-800 p-6 mb-5">
+              <FileX2 className="h-12 w-12 text-gray-400 dark:text-gray-500" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-white mb-1">
+              No records available
+            </h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-6 max-w-xs">
+              Add a record to get started. Your MOA and Legal Opinion records will appear here.
             </p>
+            <button
+              onClick={() => navigate("/add-record")}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 hover:bg-blue-700 px-5 py-2.5 text-sm font-medium text-white transition-colors"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Add Your First Record
+            </button>
           </div>
         )}
       </div>

@@ -75,11 +75,10 @@ export async function loadRecords(): Promise<RecordItem[]> {
     if (!response.ok) {
       throw new Error('Failed to fetch records');
     }
-    const records = await response.json();
-    return records.length > 0 ? records : DEFAULT_RECORDS;
+    return await response.json();
   } catch (error) {
-    console.error('Error loading records from API, using defaults:', error);
-    return DEFAULT_RECORDS;
+    console.error('Error loading records from API:', error);
+    return [];
   }
 }
 

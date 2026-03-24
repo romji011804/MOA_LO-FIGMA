@@ -1,299 +1,331 @@
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
-import { Checkbox } from "./ui/checkbox";
 import { Badge } from "./ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./ui/table";
 import { Alert, AlertDescription } from "./ui/alert";
-import { Loader2, Upload, CheckCircle, XCircle } from "lucide-react";
+import {
+  Loader2, Upload, Trash2, RefreshCw, CheckCircle2, XCircle, CloudOff, Cloud
+} from "lucide-react";
+import {
+  loadCloudRecords,
+  pushRecordToCloud,
+  deleteCloudRecord,
+  isFirebaseConfigured,
+  type CloudRecord,
+} from "../cloudRecords";
+import { loadRecords, type RecordItem } from "../records";
 
-interface Record {
-  id: string;
-  control_number: string;
-  school: string;
-  course: string;
-  status: string;
-  workflow: string;
-  hours?: string;
-  date_received?: string;
-  moa_file_name?: string;
-  moa_type?: string;
-  legal_opinion_file_name?: string;
-  legal_opinion_type?: string;
-  created_at: string;
-}
+type ToastState = { type: "success" | "error"; message: string } | null;
 
 export function CloudSync() {
-  const [records, setRecords] = useState<Record[]>([]);
-  const [filteredRecords, setFilteredRecords] = useState<Record[]>([]);
-  const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
-  const [filter, setFilter] = useState<"all" | "unsynced">("unsynced");
+  const [localRecords, setLocalRecords] = useState<RecordItem[]>([]);
+  const [cloudRecords, setCloudRecords] = useState<CloudRecord[]>([]);
   const [loading, setLoading] = useState(false);
-  const [syncing, setSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{
-    success?: boolean;
-    synced?: number;
-    already_synced?: number;
-    errors?: number;
-    message?: string;
-  } | null>(null);
+  const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadingAll, setUploadingAll] = useState(false);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [toast, setToast] = useState<ToastState>(null);
 
-  // Fetch unsynced records
-  const fetchRecords = async () => {
+  const showToast = (type: "success" | "error", message: string) => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  const refresh = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/records/unsynced`);
-      if (response.ok) {
-        const data = await response.json();
-        setRecords(data);
-        setFilteredRecords(data);
-      }
-    } catch (error) {
-      console.error('Error fetching records:', error);
+      const [local, cloud] = await Promise.all([
+        loadRecords(),
+        isFirebaseConfigured ? loadCloudRecords() : Promise.resolve([]),
+      ]);
+      setLocalRecords(local);
+      setCloudRecords(cloud);
+    } catch (err) {
+      console.error(err);
+      showToast("error", "Failed to load records.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Filter records based on sync status
-  useEffect(() => {
-    if (filter === "unsynced") {
-      setFilteredRecords(records);
-    } else {
-      // For demo purposes, we'll assume all records shown are unsynced
-      // In a real implementation, you'd fetch all records and filter
-      setFilteredRecords(records);
-    }
-  }, [filter, records]);
+  useEffect(() => { refresh(); }, []);
 
-  // Handle record selection
-  const handleSelectRecord = (recordId: string, checked: boolean) => {
-    const newSelected = new Set(selectedRecords);
-    if (checked) {
-      newSelected.add(recordId);
-    } else {
-      newSelected.delete(recordId);
-    }
-    setSelectedRecords(newSelected);
-  };
+  // Local records that are NOT yet in cloud (matched by controlNumber)
+  const cloudControlNumbers = new Set(cloudRecords.map((r) => r.controlNumber));
+  const pendingRecords = localRecords.filter(
+    (r) => !cloudControlNumbers.has(r.controlNumber)
+  );
 
-  // Handle select all
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
-      setSelectedRecords(new Set(filteredRecords.map(r => r.id)));
-    } else {
-      setSelectedRecords(new Set());
-    }
-  };
-
-  // Sync selected records to cloud
-  const handleSync = async () => {
-    if (selectedRecords.size === 0) return;
-
-    setSyncing(true);
-    setSyncResult(null);
-
+  const handleUpload = async (record: RecordItem) => {
+    setUploading(record.id);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001'}/api/sync`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          recordIds: Array.from(selectedRecords)
-        }),
-      });
-
-      const result = await response.json();
-
-      if (response.ok) {
-        setSyncResult({
-          success: true,
-          synced: result.synced,
-          already_synced: result.already_synced,
-          errors: result.errors,
-          message: `Successfully synced ${result.synced} records${result.errors > 0 ? `, ${result.errors} errors` : ''}`
-        });
-
-        // Refresh records
-        await fetchRecords();
-
-        // Clear selection
-        setSelectedRecords(new Set());
-      } else {
-        setSyncResult({
-          success: false,
-          message: result.error || 'Failed to sync records'
-        });
-      }
-    } catch (error) {
-      console.error('Error syncing records:', error);
-      setSyncResult({
-        success: false,
-        message: 'Network error occurred while syncing'
-      });
+      await pushRecordToCloud(record);
+      showToast("success", `"${record.controlNumber}" uploaded to cloud.`);
+      await refresh();
+    } catch (err) {
+      showToast("error", `Upload failed: ${(err as Error).message}`);
     } finally {
-      setSyncing(false);
+      setUploading(null);
     }
   };
 
-  useEffect(() => {
-    fetchRecords();
-  }, []);
+  const handleUploadAll = async () => {
+    if (pendingRecords.length === 0) return;
+    setUploadingAll(true);
+    let successCount = 0;
+    for (const record of pendingRecords) {
+      try {
+        await pushRecordToCloud(record);
+        successCount++;
+      } catch {
+        // continue uploading others
+      }
+    }
+    await refresh();
+    setUploadingAll(false);
+    showToast(
+      successCount === pendingRecords.length ? "success" : "error",
+      `${successCount} of ${pendingRecords.length} records uploaded.`
+    );
+  };
+
+  const handleDelete = async (firestoreId: string, controlNumber: string) => {
+    setDeleting(firestoreId);
+    try {
+      await deleteCloudRecord(firestoreId);
+      showToast("success", `"${controlNumber}" removed from cloud.`);
+      await refresh();
+    } catch (err) {
+      showToast("error", `Delete failed: ${(err as Error).message}`);
+    } finally {
+      setDeleting(null);
+    }
+  };
+
+  // Today's count
+  const today = new Date().toDateString();
+  const syncedToday = cloudRecords.filter(
+    (r) => new Date(r.uploadedAt).toDateString() === today
+  ).length;
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Cloud Sync</h1>
-          <p className="text-muted-foreground">
-            Upload unsynced records to Firebase for multi-device access
+          <h1 className="text-3xl font-bold">Cloud Records</h1>
+          <p className="text-muted-foreground mt-1">
+            Push local records to Firebase Firestore for multi-device access
           </p>
         </div>
+        <Button variant="outline" onClick={refresh} disabled={loading}>
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin mr-2" />
+          ) : (
+            <RefreshCw className="h-4 w-4 mr-2" />
+          )}
+          Refresh
+        </Button>
       </div>
 
-      {/* Filter and Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Management</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <label className="text-sm font-medium">Filter:</label>
-              <Select value={filter} onValueChange={(value: "all" | "unsynced") => setFilter(value)}>
-                <SelectTrigger className="w-40">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="unsynced">Not Synced Only</SelectItem>
-                  <SelectItem value="all">All Records</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={fetchRecords}
-                disabled={loading}
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
-              </Button>
-            </div>
-          </div>
-
-          {selectedRecords.size > 0 && (
-            <div className="flex items-center gap-4 p-4 bg-muted rounded-lg">
-              <span className="text-sm font-medium">
-                {selectedRecords.size} record{selectedRecords.size !== 1 ? 's' : ''} selected
-              </span>
-              <Button
-                onClick={handleSync}
-                disabled={syncing}
-                className="ml-auto"
-              >
-                {syncing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Uploading...
-                  </>
-                ) : (
-                  <>
-                    <Upload className="h-4 w-4 mr-2" />
-                    Upload to Cloud
-                  </>
-                )}
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Sync Result Alert */}
-      {syncResult && (
-        <Alert className={syncResult.success ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"}>
-          {syncResult.success ? (
-            <CheckCircle className="h-4 w-4 text-green-600" />
+      {/* Toast */}
+      {toast && (
+        <Alert
+          className={
+            toast.type === "success"
+              ? "border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800"
+              : "border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-800"
+          }
+        >
+          {toast.type === "success" ? (
+            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
           ) : (
-            <XCircle className="h-4 w-4 text-red-600" />
+            <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />
           )}
-          <AlertDescription className={syncResult.success ? "text-green-800" : "text-red-800"}>
-            {syncResult.message}
+          <AlertDescription
+            className={
+              toast.type === "success"
+                ? "text-green-800 dark:text-green-300"
+                : "text-red-800 dark:text-red-300"
+            }
+          >
+            {toast.message}
           </AlertDescription>
         </Alert>
       )}
 
-      {/* Records Table */}
+      {/* Connection Status */}
+      <Alert
+        className={
+          isFirebaseConfigured
+            ? "border-green-200 bg-green-50 dark:bg-green-900/20 dark:border-green-800"
+            : "border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800"
+        }
+      >
+        {isFirebaseConfigured ? (
+          <Cloud className="h-4 w-4 text-green-600 dark:text-green-400" />
+        ) : (
+          <CloudOff className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        )}
+        <AlertDescription
+          className={
+            isFirebaseConfigured
+              ? "text-green-800 dark:text-green-300"
+              : "text-amber-800 dark:text-amber-300"
+          }
+        >
+          {isFirebaseConfigured
+            ? "✅ Firebase Connected — Cloud sync is available."
+            : "⚠️ Firebase Not Configured — Add your credentials to .env to enable cloud sync."}
+        </AlertDescription>
+      </Alert>
+
+      {/* Stats Row */}
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: "Total Cloud Records", value: cloudRecords.length },
+          { label: "Synced Today", value: syncedToday },
+          { label: "Pending Upload", value: pendingRecords.length },
+        ].map((stat) => (
+          <Card key={stat.label}>
+            <CardContent className="pt-6">
+              <p className="text-sm text-muted-foreground">{stat.label}</p>
+              <p className="text-3xl font-bold mt-1">{stat.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+
+      {/* Pending Upload Panel */}
       <Card>
-        <CardHeader>
-          <CardTitle>
-            Records ({filteredRecords.length})
-            {filteredRecords.length > 0 && (
-              <div className="flex items-center gap-2 mt-2">
-                <Checkbox
-                  checked={selectedRecords.size === filteredRecords.length && filteredRecords.length > 0}
-                  onCheckedChange={handleSelectAll}
-                />
-                <span className="text-sm text-muted-foreground">Select All</span>
-              </div>
-            )}
-          </CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+          <CardTitle>Pending Upload ({pendingRecords.length})</CardTitle>
+          {pendingRecords.length > 0 && (
+            <Button
+              size="sm"
+              onClick={handleUploadAll}
+              disabled={uploadingAll || !isFirebaseConfigured}
+            >
+              {uploadingAll ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Upload className="h-4 w-4 mr-2" />
+              )}
+              Upload All
+            </Button>
+          )}
         </CardHeader>
         <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="ml-2">Loading records...</span>
-            </div>
-          ) : filteredRecords.length === 0 ? (
+          {pendingRecords.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
-              No unsynced records found
+              <CheckCircle2 className="h-8 w-8 mx-auto mb-2 text-green-500" />
+              All local records are synced to the cloud.
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-12">
-                    <Checkbox
-                      checked={selectedRecords.size === filteredRecords.length && filteredRecords.length > 0}
-                      onCheckedChange={handleSelectAll}
-                    />
-                  </TableHead>
                   <TableHead>Control Number</TableHead>
-                  <TableHead>School/University</TableHead>
+                  <TableHead>School</TableHead>
                   <TableHead>Course</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Sync Status</TableHead>
-                  <TableHead>Created</TableHead>
+                  <TableHead>Workflow</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredRecords.map((record) => (
+                {pendingRecords.map((record) => (
                   <TableRow key={record.id}>
-                    <TableCell>
-                      <Checkbox
-                        checked={selectedRecords.has(record.id)}
-                        onCheckedChange={(checked) => handleSelectRecord(record.id, checked as boolean)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">{record.control_number}</TableCell>
+                    <TableCell className="font-medium">{record.controlNumber}</TableCell>
                     <TableCell>{record.school}</TableCell>
                     <TableCell>{record.course}</TableCell>
                     <TableCell>
-                      <Badge variant={record.status === 'Completed' ? 'default' : 'secondary'}>
+                      <Badge variant={record.status === "Completed" ? "default" : "secondary"}>
                         {record.status}
                       </Badge>
                     </TableCell>
+                    <TableCell>{record.workflow}</TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleUpload(record)}
+                        disabled={uploading === record.id || !isFirebaseConfigured}
+                      >
+                        {uploading === record.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Upload className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">Upload</span>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Cloud Records Table */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Cloud Records ({cloudRecords.length})</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {!isFirebaseConfigured ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <CloudOff className="h-8 w-8 mx-auto mb-2" />
+              Configure Firebase to view cloud records.
+            </div>
+          ) : cloudRecords.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No records found in the cloud.
+            </div>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Control Number</TableHead>
+                  <TableHead>School</TableHead>
+                  <TableHead>Course</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Workflow</TableHead>
+                  <TableHead>Uploaded At</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {cloudRecords.map((record) => (
+                  <TableRow key={record.firestoreId}>
+                    <TableCell className="font-medium">{record.controlNumber}</TableCell>
+                    <TableCell>{record.school}</TableCell>
+                    <TableCell>{record.course}</TableCell>
                     <TableCell>
-                      <Badge variant="outline" className="text-orange-600 border-orange-200">
-                        Not Synced
+                      <Badge variant={record.status === "Completed" ? "default" : "secondary"}>
+                        {record.status}
                       </Badge>
                     </TableCell>
+                    <TableCell>{record.workflow}</TableCell>
                     <TableCell>
-                      {new Date(record.created_at).toLocaleDateString()}
+                      {new Date(record.uploadedAt).toLocaleDateString()}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={() => handleDelete(record.firestoreId, record.controlNumber)}
+                        disabled={deleting === record.firestoreId}
+                      >
+                        {deleting === record.firestoreId ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-4 w-4" />
+                        )}
+                        <span className="ml-1">Delete</span>
+                      </Button>
                     </TableCell>
                   </TableRow>
                 ))}

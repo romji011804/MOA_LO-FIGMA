@@ -15,7 +15,7 @@ export function Sidebar() {
     { path: "/", label: "Dashboard", icon: LayoutDashboard },
     { path: "/add-record", label: "Add Record", icon: Plus },
     { path: "/view-records", label: "View Records", icon: FileText },
-    { path: "/cloud-sync", label: "Cloud Sync", icon: Cloud },
+    { path: "/cloud-sync", label: "Cloud Records", icon: Cloud },
   ];
 
   return (
