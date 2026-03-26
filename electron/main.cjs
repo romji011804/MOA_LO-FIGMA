@@ -20,6 +20,8 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
+    fullscreen: true,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -27,6 +29,10 @@ function createWindow() {
     },
     title: 'MOA & Legal Opinion Tracker',
   });
+
+  // Remove menu bar completely
+  mainWindow.setMenuBarVisibility(false);
+  mainWindow.setMenu(null);
 
   // Load the app
   if (process.env.NODE_ENV === 'development') {
