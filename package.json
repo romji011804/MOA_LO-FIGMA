@@ -15,7 +15,8 @@
     "appId": "com.moalo.tracker",
     "productName": "MOA LO Tracker",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -26,11 +27,21 @@
       "target": [
         "nsis"
       ],
-      "icon": "public/icon.ico"
+      "icon": "build/icon.ico",
+      "publisherName": "MOA LO Tracker Team",
+      "verifyUpdateCodeSignature": false
     },
     "nsis": {
       "oneClick": false,
-      "allowToChangeInstallationDirectory": true
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "MOA LO Tracker"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "romji011804",
+      "repo": "MOA_LO-FIGMA"
     }
   },
   "dependencies": {
@@ -73,6 +84,7 @@
     "cross-env": "^7.0.3",
     "date-fns": "3.6.0",
     "electron": "^28.0.0",
+    "electron-updater": "^6.1.7",
     "embla-carousel-react": "8.6.0",
     "input-otp": "1.4.2",
     "lucide-react": "0.487.0",

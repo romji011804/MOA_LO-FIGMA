@@ -1,8 +1,13 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
 let mainWindow;
+
+// Auto-updater configuration
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -15,7 +20,7 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    icon: path.join(__dirname, '../public/icon.png'),
+    icon: path.join(__dirname, '../build/icon.ico'),
     title: 'MOA & Legal Opinion Tracker',
   });
 
@@ -25,6 +30,9 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
+    
+    // Check for updates in production
+    autoUpdater.checkForUpdatesAndNotify();
   }
 
   mainWindow.on('closed', () => {
@@ -32,7 +40,12 @@ function createWindow() {
   });
 }
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  createWindow();
+  
+  // Setup auto-updater events
+  setupAutoUpdater();
+});
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -46,11 +59,78 @@ app.on('activate', () => {
   }
 });
 
-// IPC Handlers (simplified - browser storage will handle most operations)
+// Auto-updater setup
+function setupAutoUpdater() {
+  autoUpdater.on('checking-for-update', () => {
+    sendStatusToWindow('Checking for updates...');
+  });
+
+  autoUpdater.on('update-available', (info) => {
+    sendStatusToWindow('Update available.');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-available', info);
+    }
+  });
+
+  autoUpdater.on('update-not-available', (info) => {
+    sendStatusToWindow('App is up to date.');
+  });
+
+  autoUpdater.on('error', (err) => {
+    sendStatusToWindow('Error in auto-updater: ' + err);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    let message = `Download speed: ${progressObj.bytesPerSecond} - Downloaded ${progressObj.percent}%`;
+    sendStatusToWindow(message);
+    if (mainWindow) {
+      mainWindow.webContents.send('download-progress', progressObj);
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendStatusToWindow('Update downloaded. Will install on quit.');
+    if (mainWindow) {
+      mainWindow.webContents.send('update-downloaded', info);
+    }
+  });
+}
+
+function sendStatusToWindow(text) {
+  console.log(text);
+  if (mainWindow) {
+    mainWindow.webContents.send('update-status', text);
+  }
+}
+
+// IPC Handlers
 ipcMain.handle('app:getVersion', () => {
   return app.getVersion();
 });
 
 ipcMain.handle('app:getDataPath', () => {
   return app.getPath('userData');
+});
+
+// Auto-updater IPC handlers
+ipcMain.handle('updater:checkForUpdates', async () => {
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return result;
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('updater:downloadUpdate', async () => {
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    return { error: error.message };
+  }
+});
+
+ipcMain.handle('updater:quitAndInstall', () => {
+  autoUpdater.quitAndInstall();
 });

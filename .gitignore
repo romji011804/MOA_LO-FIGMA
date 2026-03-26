@@ -41,6 +41,12 @@ desktop.ini
 *.exe
 *.msi
 
+# Code signing certificates (NEVER COMMIT THESE!)
+*.pfx
+*.p12
+*.pem
+certificate.*
+
 # Database
 *.sqlite
 *.db
