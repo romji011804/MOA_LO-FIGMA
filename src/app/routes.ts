@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router";
+import { createHashRouter } from "react-router";
 import { Root } from "./components/Root";
 import { Dashboard } from "./components/Dashboard";
 import { AddRecord } from "./components/AddRecord";
@@ -6,7 +6,7 @@ import { ViewRecords } from "./components/ViewRecords";
 import { ViewSingleRecord } from "./components/ViewSingleRecord";
 import { ImportExport } from "./components/ImportExport";
 
-export const router = createBrowserRouter([
+export const router = createHashRouter([
   {
     path: "/",
     Component: Root,
