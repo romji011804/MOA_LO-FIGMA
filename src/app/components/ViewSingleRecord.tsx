@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "react-router";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   ArrowLeft,
   School,
@@ -12,20 +12,8 @@ import {
   Scale,
   ExternalLink,
 } from "lucide-react";
-import { loadRecords, type RecordItem } from "../records";
+import { loadRecords } from "../records";
 import { getFileBlob } from "../fileStorage";
-
-interface DisplayRecord {
-  controlNumber: string;
-  school: string;
-  course: string;
-  hours: string;
-  dateReceived: string;
-  status: string;
-  workflow: string;
-  moa: string;
-  legalOpinion: string;
-}
 
 interface FieldProps {
   icon: React.ReactNode;
@@ -63,48 +51,21 @@ export function ViewSingleRecord() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [openMessage, setOpenMessage] = useState("");
-  const [record, setRecord] = useState<DisplayRecord | null>(null);
-  const [rawRecord, setRawRecord] = useState<RecordItem | null>(null);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchRecord = async () => {
-      try {
-        const records = await loadRecords();
-        const storedRecord = records.find((item) => item.id === id);
-        if (storedRecord) {
-          setRawRecord(storedRecord);
-          setRecord({
-            controlNumber: storedRecord.controlNumber,
-            school: storedRecord.school,
-            course: storedRecord.course,
-            hours: storedRecord.hours || "-",
-            dateReceived: storedRecord.dateReceived || "-",
-            status: storedRecord.status,
-            workflow: storedRecord.workflow,
-            moa: storedRecord.moaValue || "-",
-            legalOpinion: storedRecord.legalOpinionValue || "-",
-          });
-        }
-      } catch (error) {
-        console.error('Error loading record:', error);
-      } finally {
-        setLoading(false);
+  const storedRecord = loadRecords().find((item) => item.id === id);
+  const record = storedRecord
+    ? {
+        controlNumber: storedRecord.controlNumber,
+        school: storedRecord.school,
+        course: storedRecord.course,
+        hours: storedRecord.hours || "-",
+        dateReceived: storedRecord.dateReceived || "-",
+        status: storedRecord.status,
+        workflow: storedRecord.workflow,
+        moa: storedRecord.moaValue || "-",
+        legalOpinion: storedRecord.legalOpinionValue || "-",
       }
-    };
-
-    if (id) {
-      fetchRecord();
-    }
-  }, [id]);
-
-  if (loading) {
-    return (
-      <div className="p-8">
-        <div className="text-center">Loading record...</div>
-      </div>
-    );
-  }
+    : null;
 
   if (!record) {
     return (
@@ -139,8 +100,29 @@ export function ViewSingleRecord() {
       return;
     }
     if (type === "file") {
-      // Direct data URI or remote URL — open immediately
-      if (value.startsWith("data:") || /^https?:\/\//i.test(value)) {
+      if (value.startsWith("idb:")) {
+        try {
+          const blob = await getFileBlob(value);
+          if (!blob) {
+            setOpenMessage("Saved file was not found. Please re-upload.");
+            return;
+          }
+          const blobUrl = URL.createObjectURL(blob);
+          const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
+          if (!opened) {
+            setOpenMessage("Popup blocked. Please allow popups to open the file.");
+            URL.revokeObjectURL(blobUrl);
+            return;
+          }
+          setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+          setOpenMessage("");
+          return;
+        } catch {
+          setOpenMessage("Unable to open saved file.");
+          return;
+        }
+      }
+      if (value.startsWith("data:")) {
         const opened = window.open(value, "_blank", "noopener,noreferrer");
         if (!opened) {
           setOpenMessage("Popup blocked. Please allow popups to open the file.");
@@ -149,31 +131,16 @@ export function ViewSingleRecord() {
         setOpenMessage("");
         return;
       }
-      // Plain UUID (API file ID) or legacy idb: key — fetch from server
-      try {
-        const blob = await getFileBlob(value);
-        if (!blob) {
-          setOpenMessage("Saved file was not found. Please re-upload.");
-          return;
-        }
-        const blobUrl = URL.createObjectURL(blob);
-        const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
-        if (!opened) {
-          setOpenMessage("Popup blocked. Please allow popups to open the file.");
-          URL.revokeObjectURL(blobUrl);
-          return;
-        }
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+      if (/^https?:\/\//i.test(value)) {
+        window.open(value, "_blank", "noopener,noreferrer");
         setOpenMessage("");
         return;
-      } catch {
-        setOpenMessage(`Unable to open file${name ? `: ${name}` : ""}.`);
-        return;
       }
+      setOpenMessage(`Unable to open file${name ? `: ${name}` : ""}.`);
+      return;
     }
     setOpenMessage("No document available for this field.");
   };
-
 
   return (
     <div className="p-8">
@@ -243,22 +210,22 @@ export function ViewSingleRecord() {
             <Field
               icon={<FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />}
               label="Memorandum of Agreement"
-              value={rawRecord?.moaFileName || record.moa}
+              value={storedRecord?.moaFileName || record.moa}
               isLink
               onClick={() =>
-                openDocument(rawRecord?.moaType, rawRecord?.moaValue, rawRecord?.moaFileName)
+                openDocument(storedRecord?.moaType, storedRecord?.moaValue, storedRecord?.moaFileName)
               }
             />
             <Field
               icon={<Scale className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
               label="Legal Opinion"
-              value={rawRecord?.legalOpinionFileName || record.legalOpinion}
+              value={storedRecord?.legalOpinionFileName || record.legalOpinion}
               isLink
               onClick={() =>
                 openDocument(
-                  rawRecord?.legalOpinionType,
-                  rawRecord?.legalOpinionValue,
-                  rawRecord?.legalOpinionFileName
+                  storedRecord?.legalOpinionType,
+                  storedRecord?.legalOpinionValue,
+                  storedRecord?.legalOpinionFileName
                 )
               }
             />
