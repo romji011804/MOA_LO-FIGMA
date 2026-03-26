@@ -1,15 +1,18 @@
 import { useState } from "react";
-import { Download, Upload, AlertCircle, CheckCircle, Info } from "lucide-react";
+import { Download, Upload, AlertCircle, CheckCircle, Info, Edit2 } from "lucide-react";
 import {
   exportRecordsToJSON,
   importRecordsFromJSON,
   getMachineId,
+  setMachineId,
   type MergeResult,
 } from "../mergeRecords";
 
 export function ImportExport() {
   const [importResult, setImportResult] = useState<MergeResult | null>(null);
-  const machineId = getMachineId();
+  const [machineId, setMachineIdState] = useState(getMachineId());
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(machineId);
 
   const handleExport = () => {
     const json = exportRecordsToJSON();
@@ -38,6 +41,36 @@ export function ImportExport() {
     event.target.value = ""; // Reset input
   };
 
+  const handleEditMachineId = () => {
+    setIsEditing(true);
+    setEditValue(machineId);
+  };
+
+  const handleSaveMachineId = () => {
+    const cleanValue = editValue.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    if (cleanValue.length < 2) {
+      alert('Machine ID must be at least 2 characters (letters and numbers only)');
+      return;
+    }
+    
+    if (cleanValue.length > 10) {
+      alert('Machine ID must be 10 characters or less');
+      return;
+    }
+
+    if (setMachineId(cleanValue)) {
+      setMachineIdState(cleanValue);
+      setIsEditing(false);
+      alert('Machine ID updated! New records will use: MOA-2026-' + cleanValue + '-001');
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditValue(machineId);
+  };
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -53,15 +86,57 @@ export function ImportExport() {
         {/* Machine Info */}
         <div className="lg:col-span-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-6">
           <div className="flex items-start gap-3">
-            <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-            <div>
-              <h3 className="font-medium text-blue-900 dark:text-blue-100 mb-2">
-                Machine ID: {machineId}
-              </h3>
-              <p className="text-sm text-blue-800 dark:text-blue-200">
-                Each computer has a unique ID to prevent duplicate control numbers.
-                Your records will have format: MOA-2026-{machineId}-001
-              </p>
+            <Info className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <div className="flex items-center gap-3 mb-2">
+                <h3 className="font-medium text-blue-900 dark:text-blue-100">
+                  Machine ID: {machineId}
+                </h3>
+                {!isEditing && (
+                  <button
+                    onClick={handleEditMachineId}
+                    className="text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
+                    title="Change Machine ID"
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              
+              {isEditing ? (
+                <div className="space-y-3">
+                  <input
+                    type="text"
+                    value={editValue}
+                    onChange={(e) => setEditValue(e.target.value)}
+                    placeholder="e.g., OFFICE1, BRANCH2, ADMIN"
+                    maxLength={10}
+                    className="w-full px-3 py-2 rounded-lg border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleSaveMachineId}
+                      className="px-4 py-1.5 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      className="px-4 py-1.5 rounded-lg border border-blue-300 dark:border-blue-600 text-blue-700 dark:text-blue-300 text-sm font-medium hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  <p className="text-xs text-blue-700 dark:text-blue-300">
+                    2-10 characters, letters and numbers only. Example: OFFICE1, BRANCH2, ADMIN
+                  </p>
+                </div>
+              ) : (
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  Each computer has a unique ID to prevent duplicate control numbers.
+                  Your records will have format: MOA-2026-{machineId}-001
+                </p>
+              )}
             </div>
           </div>
         </div>

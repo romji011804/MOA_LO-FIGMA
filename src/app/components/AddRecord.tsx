@@ -84,26 +84,49 @@ export function AddRecord() {
   }, [editId]);
 
   const generateControlNumber = (records: RecordItem[]) => {
-    // Get or create a unique machine identifier
+    // Get or prompt for machine identifier (user's preferred name)
     const getMachineId = () => {
       let machineId = localStorage.getItem('machine-id');
       if (!machineId) {
-        // Generate a unique 4-character machine ID
-        machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
-        localStorage.setItem('machine-id', machineId);
+        // Prompt user for a preferred name/identifier
+        const userInput = prompt(
+          'Enter a unique identifier for this computer (e.g., OFFICE1, BRANCH2, ADMIN):\n\n' +
+          'This will be used in control numbers like: MOA-2026-OFFICE1-001\n\n' +
+          'Use 2-10 characters (letters and numbers only)'
+        );
+        
+        if (userInput) {
+          // Clean and validate input
+          machineId = userInput
+            .trim()
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '') // Remove special characters
+            .substring(0, 10); // Max 10 characters
+          
+          if (machineId.length < 2) {
+            // Fallback to random if too short
+            machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
+          }
+          
+          localStorage.setItem('machine-id', machineId);
+        } else {
+          // User cancelled, use random
+          machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
+          localStorage.setItem('machine-id', machineId);
+        }
       }
       return machineId;
     };
 
     const machineId = getMachineId();
     const numbers = records
-      .map((record) => record.controlNumber.match(/MOA-\d{4}-([A-Z0-9]{4})-(\d+)/))
+      .map((record) => record.controlNumber.match(/MOA-\d{4}-([A-Z0-9]+)-(\d+)/))
       .filter((match) => match && match[1] === machineId) // Only count this machine's records
       .map((match) => (match ? Number(match[2]) : 0));
     const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
     const year = new Date().getFullYear();
     
-    // Format: MOA-2026-A1B2-001 (Year-MachineID-Sequence)
+    // Format: MOA-2026-OFFICE1-001 (Year-MachineID-Sequence)
     return `MOA-${year}-${machineId}-${String(next).padStart(3, "0")}`;
   };
 

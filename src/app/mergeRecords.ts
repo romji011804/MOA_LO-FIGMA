@@ -97,6 +97,7 @@ export function importRecordsFromJSON(jsonString: string): MergeResult {
 export function getMachineId(): string {
   let machineId = localStorage.getItem('machine-id');
   if (!machineId) {
+    // This shouldn't happen in normal use, but provide fallback
     machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
     localStorage.setItem('machine-id', machineId);
   }
@@ -108,6 +109,25 @@ export function getMachineId(): string {
  */
 export function isFromThisMachine(controlNumber: string): boolean {
   const machineId = getMachineId();
-  const match = controlNumber.match(/MOA-\d{4}-([A-Z0-9]{4})-\d+/);
+  const match = controlNumber.match(/MOA-\d{4}-([A-Z0-9]+)-\d+/);
   return match ? match[1] === machineId : false;
+}
+
+/**
+ * Change the machine ID (useful for renaming)
+ */
+export function setMachineId(newId: string): boolean {
+  // Validate input
+  const cleanId = newId
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .substring(0, 10);
+  
+  if (cleanId.length < 2) {
+    return false;
+  }
+  
+  localStorage.setItem('machine-id', cleanId);
+  return true;
 }
