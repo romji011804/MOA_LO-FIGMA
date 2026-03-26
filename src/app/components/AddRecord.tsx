@@ -92,7 +92,7 @@ export function AddRecord() {
         const userInput = prompt(
           'Enter a unique identifier for this computer (e.g., OFFICE1, BRANCH2, ADMIN):\n\n' +
           'This will be used in control numbers like: MOA-2026-OFFICE1-001\n\n' +
-          'Use 2-10 characters (letters and numbers only)'
+          'Use 2-50 characters (letters and numbers only)'
         );
         
         if (userInput) {
@@ -101,7 +101,7 @@ export function AddRecord() {
             .trim()
             .toUpperCase()
             .replace(/[^A-Z0-9]/g, '') // Remove special characters
-            .substring(0, 10); // Max 10 characters
+            .substring(0, 50); // Max 50 characters
           
           if (machineId.length < 2) {
             // Fallback to random if too short

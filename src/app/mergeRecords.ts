@@ -122,7 +122,7 @@ export function setMachineId(newId: string): boolean {
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
-    .substring(0, 10);
+    .substring(0, 50);
   
   if (cleanId.length < 2) {
     return false;

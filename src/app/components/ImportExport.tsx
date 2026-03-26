@@ -92,8 +92,8 @@ export function ImportExport() {
       return;
     }
     
-    if (cleanValue.length > 10) {
-      alert('Machine ID must be 10 characters or less');
+    if (cleanValue.length > 50) {
+      alert('Machine ID must be 50 characters or less');
       return;
     }
 
@@ -239,7 +239,7 @@ export function ImportExport() {
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
                     placeholder="e.g., OFFICE1, BRANCH2, ADMIN"
-                    maxLength={10}
+                    maxLength={50}
                     className="w-full px-3 py-2 rounded-lg border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   />
                   <div className="flex gap-2">
@@ -257,7 +257,7 @@ export function ImportExport() {
                     </button>
                   </div>
                   <p className="text-xs text-blue-700 dark:text-blue-300">
-                    2-10 characters, letters and numbers only. Example: OFFICE1, BRANCH2, ADMIN
+                    2-50 characters, letters and numbers only. Example: OFFICE1, BRANCH2, ADMIN
                   </p>
                 </div>
               ) : (
