@@ -85,10 +85,10 @@ export function ImportExport() {
   };
 
   const handleSaveMachineId = () => {
-    const cleanValue = editValue.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const cleanValue = editValue.trim();
     
     if (cleanValue.length < 2) {
-      alert('Machine ID must be at least 2 characters (letters and numbers only)');
+      alert('Machine ID must be at least 2 characters');
       return;
     }
     
@@ -238,7 +238,7 @@ export function ImportExport() {
                     type="text"
                     value={editValue}
                     onChange={(e) => setEditValue(e.target.value)}
-                    placeholder="e.g., OFFICE1, BRANCH2, ADMIN"
+                    placeholder="e.g., Main Office, Branch-2, Legal Dept."
                     maxLength={50}
                     className="w-full px-3 py-2 rounded-lg border border-blue-300 dark:border-blue-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-sm"
                   />
@@ -257,7 +257,7 @@ export function ImportExport() {
                     </button>
                   </div>
                   <p className="text-xs text-blue-700 dark:text-blue-300">
-                    2-50 characters, letters and numbers only. Example: OFFICE1, BRANCH2, ADMIN
+                    2-50 characters, any characters allowed. Example: Main Office, Branch-2, Legal Dept.
                   </p>
                 </div>
               ) : (

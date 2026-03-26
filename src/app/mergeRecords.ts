@@ -109,20 +109,18 @@ export function getMachineId(): string {
  */
 export function isFromThisMachine(controlNumber: string): boolean {
   const machineId = getMachineId();
-  const match = controlNumber.match(/MOA-\d{4}-([A-Z0-9]+)-\d+/);
-  return match ? match[1] === machineId : false;
+  // Escape special regex characters in machineId
+  const escapedId = machineId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const regex = new RegExp(`MOA-\\d{4}-(${escapedId})-\\d+`);
+  return regex.test(controlNumber);
 }
 
 /**
  * Change the machine ID (useful for renaming)
  */
 export function setMachineId(newId: string): boolean {
-  // Validate input
-  const cleanId = newId
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, '')
-    .substring(0, 50);
+  // Validate input - just trim and check length
+  const cleanId = newId.trim().substring(0, 50);
   
   if (cleanId.length < 2) {
     return false;
