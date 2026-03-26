@@ -84,12 +84,27 @@ export function AddRecord() {
   }, [editId]);
 
   const generateControlNumber = (records: RecordItem[]) => {
+    // Get or create a unique machine identifier
+    const getMachineId = () => {
+      let machineId = localStorage.getItem('machine-id');
+      if (!machineId) {
+        // Generate a unique 4-character machine ID
+        machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
+        localStorage.setItem('machine-id', machineId);
+      }
+      return machineId;
+    };
+
+    const machineId = getMachineId();
     const numbers = records
-      .map((record) => record.controlNumber.match(/MOA-\d{4}-(\d+)/))
-      .map((match) => (match ? Number(match[1]) : 0));
+      .map((record) => record.controlNumber.match(/MOA-\d{4}-([A-Z0-9]{4})-(\d+)/))
+      .filter((match) => match && match[1] === machineId) // Only count this machine's records
+      .map((match) => (match ? Number(match[2]) : 0));
     const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
     const year = new Date().getFullYear();
-    return `MOA-${year}-${String(next).padStart(3, "0")}`;
+    
+    // Format: MOA-2026-A1B2-001 (Year-MachineID-Sequence)
+    return `MOA-${year}-${machineId}-${String(next).padStart(3, "0")}`;
   };
 
   const assignLoFile = (file: File | undefined) => {
