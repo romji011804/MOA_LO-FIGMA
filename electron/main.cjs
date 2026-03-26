@@ -1,13 +1,18 @@
 const { app, BrowserWindow, ipcMain } = require('electron');
-const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const fs = require('fs');
 
 let mainWindow;
+let autoUpdater = null;
 
-// Auto-updater configuration
-autoUpdater.autoDownload = false;
-autoUpdater.autoInstallOnAppQuit = true;
+// Try to load electron-updater, but don't fail if it's not available
+try {
+  autoUpdater = require('electron-updater').autoUpdater;
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+} catch (error) {
+  console.log('electron-updater not available:', error.message);
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -20,7 +25,6 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
     },
-    icon: path.join(__dirname, '../build/icon.ico'),
     title: 'MOA & Legal Opinion Tracker',
   });
 
@@ -31,8 +35,10 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'));
     
-    // Check for updates in production
-    autoUpdater.checkForUpdatesAndNotify();
+    // Check for updates in production only if autoUpdater is available
+    if (autoUpdater) {
+      autoUpdater.checkForUpdatesAndNotify();
+    }
   }
 
   mainWindow.on('closed', () => {
@@ -43,8 +49,10 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   
-  // Setup auto-updater events
-  setupAutoUpdater();
+  // Setup auto-updater events only if available
+  if (autoUpdater) {
+    setupAutoUpdater();
+  }
 });
 
 app.on('window-all-closed', () => {
@@ -61,6 +69,8 @@ app.on('activate', () => {
 
 // Auto-updater setup
 function setupAutoUpdater() {
+  if (!autoUpdater) return;
+
   autoUpdater.on('checking-for-update', () => {
     sendStatusToWindow('Checking for updates...');
   });
@@ -114,6 +124,9 @@ ipcMain.handle('app:getDataPath', () => {
 
 // Auto-updater IPC handlers
 ipcMain.handle('updater:checkForUpdates', async () => {
+  if (!autoUpdater) {
+    return { error: 'Auto-updater not available' };
+  }
   try {
     const result = await autoUpdater.checkForUpdates();
     return result;
@@ -123,6 +136,9 @@ ipcMain.handle('updater:checkForUpdates', async () => {
 });
 
 ipcMain.handle('updater:downloadUpdate', async () => {
+  if (!autoUpdater) {
+    return { error: 'Auto-updater not available' };
+  }
   try {
     await autoUpdater.downloadUpdate();
     return { success: true };
@@ -132,5 +148,7 @@ ipcMain.handle('updater:downloadUpdate', async () => {
 });
 
 ipcMain.handle('updater:quitAndInstall', () => {
-  autoUpdater.quitAndInstall();
+  if (autoUpdater) {
+    autoUpdater.quitAndInstall();
+  }
 });
