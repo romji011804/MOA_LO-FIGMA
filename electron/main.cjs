@@ -20,7 +20,7 @@ function createWindow() {
     height: 900,
     minWidth: 800,
     minHeight: 600,
-    fullscreen: true,
+    frame: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
@@ -126,6 +126,29 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getDataPath', () => {
   return app.getPath('userData');
+});
+
+// Window control handlers
+ipcMain.on('window:minimize', () => {
+  if (mainWindow) {
+    mainWindow.minimize();
+  }
+});
+
+ipcMain.on('window:maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.on('window:close', () => {
+  if (mainWindow) {
+    mainWindow.close();
+  }
 });
 
 // Auto-updater IPC handlers

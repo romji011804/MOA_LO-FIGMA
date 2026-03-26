@@ -150,6 +150,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   getDataPath: () => ipcRenderer.invoke('app:getDataPath'),
 
+  /**
+   * Minimize the window
+   */
+  minimizeWindow: () => ipcRenderer.send('window:minimize'),
+
+  /**
+   * Maximize/restore the window
+   */
+  maximizeWindow: () => ipcRenderer.send('window:maximize'),
+
+  /**
+   * Close the window
+   */
+  closeWindow: () => ipcRenderer.send('window:close'),
+
   // ============================================
   // Data Migration Operations
   // ============================================
