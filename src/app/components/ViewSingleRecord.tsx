@@ -108,12 +108,7 @@ export function ViewSingleRecord() {
             return;
           }
           const blobUrl = URL.createObjectURL(blob);
-          const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
-          if (!opened) {
-            setOpenMessage("Popup blocked. Please allow popups to open the file.");
-            URL.revokeObjectURL(blobUrl);
-            return;
-          }
+          window.open(blobUrl, "_blank", "noopener,noreferrer");
           setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
           setOpenMessage("");
           return;
@@ -123,11 +118,7 @@ export function ViewSingleRecord() {
         }
       }
       if (value.startsWith("data:")) {
-        const opened = window.open(value, "_blank", "noopener,noreferrer");
-        if (!opened) {
-          setOpenMessage("Popup blocked. Please allow popups to open the file.");
-          return;
-        }
+        window.open(value, "_blank", "noopener,noreferrer");
         setOpenMessage("");
         return;
       }

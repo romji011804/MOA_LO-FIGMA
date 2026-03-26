@@ -79,12 +79,7 @@ export function ViewRecords() {
             return;
           }
           const blobUrl = URL.createObjectURL(blob);
-          const opened = window.open(blobUrl, "_blank", "noopener,noreferrer");
-          if (!opened) {
-            setOpenMessage("Popup blocked. Please allow popups to open files.");
-            URL.revokeObjectURL(blobUrl);
-            return;
-          }
+          window.open(blobUrl, "_blank", "noopener,noreferrer");
           setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
           setOpenMessage("");
           return;
@@ -94,11 +89,7 @@ export function ViewRecords() {
         }
       }
       if (value.startsWith("data:") || /^https?:\/\//i.test(value)) {
-        const opened = window.open(value, "_blank", "noopener,noreferrer");
-        if (!opened) {
-          setOpenMessage("Popup blocked. Please allow popups to open files.");
-          return;
-        }
+        window.open(value, "_blank", "noopener,noreferrer");
         setOpenMessage("");
         return;
       }
