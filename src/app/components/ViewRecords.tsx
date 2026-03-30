@@ -123,6 +123,21 @@ export function ViewRecords() {
   const allVisibleSelected =
     sortedRecords.length > 0 && sortedRecords.every((record) => selectedIds.includes(record.id));
 
+  const formatTimestamp = (iso?: string) => {
+    if (!iso) return "—";
+    const d = new Date(iso);
+    return new Intl.DateTimeFormat("en-US", {
+      month: "long",
+      day: "numeric",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+      .format(d)
+      .replace(",", " –");
+  };
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "Completed":
@@ -254,6 +269,9 @@ export function ViewRecords() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Workflow Stage
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Date &amp; Time
+                </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Documents
                 </th>
@@ -307,6 +325,16 @@ export function ViewRecords() {
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
                     {record.workflow}
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-xs text-gray-700 dark:text-gray-200 whitespace-nowrap">
+                      {formatTimestamp(record.createdAt)}
+                    </div>
+                    {record.updatedAt && record.updatedAt !== record.createdAt && (
+                      <div className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap mt-0.5">
+                        ↻ {formatTimestamp(record.updatedAt)}
+                      </div>
+                    )}
                   </td>
                   <td
                     className="px-6 py-4"

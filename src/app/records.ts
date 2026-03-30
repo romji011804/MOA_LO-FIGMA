@@ -13,6 +13,8 @@ export interface RecordItem {
   legalOpinionValue?: string;
   legalOpinionFileName?: string;
   legalOpinionType?: "file" | "link";
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export const DEFAULT_RECORDS: RecordItem[] = [

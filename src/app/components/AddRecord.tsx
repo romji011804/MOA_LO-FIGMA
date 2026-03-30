@@ -187,6 +187,7 @@ export function AddRecord() {
       setFormError("Failed to store uploaded PDF/document. Please try again.");
       return;
     }
+    const now = new Date().toISOString();
     const newRecord: RecordItem = {
       id: editingRecord?.id || String(Date.now()),
       controlNumber: editingRecord?.controlNumber || generateControlNumber(records),
@@ -204,6 +205,8 @@ export function AddRecord() {
       legalOpinionValue: nextLoValue,
       legalOpinionFileName:
         loUploadType === "file" && legalOpinionFileName ? legalOpinionFileName : undefined,
+      createdAt: editingRecord?.createdAt ?? now,
+      updatedAt: now,
     };
 
     const updated = editingRecord
