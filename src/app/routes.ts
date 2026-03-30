@@ -5,6 +5,7 @@ import { AddRecord } from "./components/AddRecord";
 import { ViewRecords } from "./components/ViewRecords";
 import { ViewSingleRecord } from "./components/ViewSingleRecord";
 import { ImportExport } from "./components/ImportExport";
+import { Reports } from "./components/Reports";
 
 export const router = createHashRouter([
   {
@@ -16,6 +17,7 @@ export const router = createHashRouter([
       { path: "view-records", Component: ViewRecords },
       { path: "record/:id", Component: ViewSingleRecord },
       { path: "import-export", Component: ImportExport },
+      { path: "reports", Component: Reports },
     ],
   },
 ]);
