@@ -14,6 +14,7 @@ import {
 import { useNavigate, useSearchParams } from "react-router";
 import { loadRecords, saveRecords, type RecordItem } from "../records";
 import { isIndexedDbAvailable, saveFileBlob } from "../fileStorage";
+import { generateControlNumber, generateRecordId } from "../mergeRecords";
 
 /** PDF/DOC/DOCX — avoid nesting <input type="file"> inside <button> (invalid HTML; breaks pickers in some browsers). */
 const DOC_ACCEPT =
@@ -83,52 +84,6 @@ export function AddRecord() {
     }
   }, [editId]);
 
-  const generateControlNumber = (records: RecordItem[]) => {
-    // Get or prompt for machine identifier (user's preferred name)
-    const getMachineId = () => {
-      let machineId = localStorage.getItem('machine-id');
-      if (!machineId) {
-        // Prompt user for a preferred name/identifier
-        const userInput = prompt(
-          'Enter a unique identifier for this computer:\n\n' +
-          'Examples: Main Office, Branch-2, Legal Dept., Admin #1\n\n' +
-          'This will be used in control numbers like: MOA-2026-Main Office-001\n\n' +
-          'Use 2-50 characters (any characters allowed)'
-        );
-        
-        if (userInput) {
-          // Keep original input, just trim and limit length
-          machineId = userInput.trim().substring(0, 50);
-          
-          if (machineId.length < 2) {
-            // Fallback to random if too short
-            machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
-          }
-          
-          localStorage.setItem('machine-id', machineId);
-        } else {
-          // User cancelled, use random
-          machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
-          localStorage.setItem('machine-id', machineId);
-        }
-      }
-      return machineId;
-    };
-
-    const machineId = getMachineId();
-    // Escape special regex characters in machineId for matching
-    const escapedId = machineId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const regex = new RegExp(`MOA-\\d{4}-(${escapedId})-(\\d+)`);
-    const numbers = records
-      .map((record) => record.controlNumber.match(regex))
-      .filter((match) => match !== null)
-      .map((match) => (match ? Number(match[2]) : 0));
-    const next = (numbers.length ? Math.max(...numbers) : 0) + 1;
-    const year = new Date().getFullYear();
-    
-    // Format: MOA-2026-Main Office-001 (Year-MachineID-Sequence)
-    return `MOA-${year}-${machineId}-${String(next).padStart(3, "0")}`;
-  };
 
   const assignLoFile = (file: File | undefined) => {
     if (!file) {
@@ -188,9 +143,11 @@ export function AddRecord() {
       return;
     }
     const now = new Date().toISOString();
+    // For new records: generate the record ID first so it can be embedded in the CN.
+    const recordId = editingRecord?.id ?? generateRecordId();
     const newRecord: RecordItem = {
-      id: editingRecord?.id || String(Date.now()),
-      controlNumber: editingRecord?.controlNumber || generateControlNumber(records),
+      id: recordId,
+      controlNumber: editingRecord?.controlNumber ?? generateControlNumber(records, recordId),
       school: school.trim(),
       course: course.trim(),
       status,

@@ -373,6 +373,16 @@ export function ImportExport() {
                         ⚠️ Skipped duplicates: {importResult.duplicates}
                       </p>
                     )}
+                    {importResult.idsRegenerated > 0 && (
+                      <p className="text-gray-700 dark:text-gray-300">
+                        🔄 Record IDs regenerated: {importResult.idsRegenerated}
+                      </p>
+                    )}
+                    {importResult.controlNumbersAdjusted > 0 && (
+                      <p className="text-gray-700 dark:text-gray-300">
+                        🔢 Control Numbers adjusted: {importResult.controlNumbersAdjusted}
+                      </p>
+                    )}
                   </div>
 
                   {importResult.errors.length > 0 && (
