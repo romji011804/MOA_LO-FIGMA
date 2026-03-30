@@ -1,5 +1,17 @@
-import { useState } from "react";
-import { Search, Filter, Pencil, Trash2, Pin, PinOff, Link2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Search,
+  Filter,
+  Pencil,
+  Trash2,
+  Pin,
+  PinOff,
+  Link2,
+  X,
+  CalendarRange,
+  GraduationCap,
+  School,
+} from "lucide-react";
 import { useNavigate } from "react-router";
 import {
   AlertDialog,
@@ -11,20 +23,116 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "./ui/alert-dialog";
-import { loadRecords, saveRecords, type RecordItem } from "../records";
+import {
+  filterRecords,
+  getRecordFilterOptions,
+  loadRecords,
+  saveRecords,
+  type RecordFilters,
+  type RecordItem,
+} from "../records";
 import { getFileBlob } from "../fileStorage";
+
+const EMPTY_FILTERS: RecordFilters = {
+  school: "",
+  course: "",
+  search: "",
+  dateFrom: "",
+  dateTo: "",
+};
+
+function normalizeFilterValue(value?: string | number) {
+  return typeof value === "number" ? String(value) : value?.trim() || "";
+}
 
 export function ViewRecords() {
   const navigate = useNavigate();
-  const [searchTerm, setSearchTerm] = useState("");
-  const [filterStatus, setFilterStatus] = useState("all");
+  const [filters, setFilters] = useState<RecordFilters>(EMPTY_FILTERS);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [pinnedIds, setPinnedIds] = useState<string[]>([]);
   const [pendingDeleteIds, setPendingDeleteIds] = useState<string[]>([]);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [openMessage, setOpenMessage] = useState("");
-
   const [allRecords, setAllRecords] = useState<RecordItem[]>(() => loadRecords());
+
+  const filterOptions = useMemo(() => getRecordFilterOptions(allRecords), [allRecords]);
+  const availableCourses = useMemo(() => {
+    if (!filters.school) {
+      return [];
+    }
+
+    return filterOptions.coursesBySchool[filters.school.trim().toLowerCase()] ?? [];
+  }, [filterOptions.coursesBySchool, filters.school]);
+
+  const filteredRecords = useMemo(() => filterRecords(allRecords, filters), [allRecords, filters]);
+
+  const sortedRecords = useMemo(() => {
+    return [...filteredRecords].sort((a, b) => {
+      const aPinned = pinnedIds.includes(a.id);
+      const bPinned = pinnedIds.includes(b.id);
+      if (aPinned !== bPinned) {
+        return aPinned ? -1 : 1;
+      }
+
+      const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return bTime - aTime;
+    });
+  }, [filteredRecords, pinnedIds]);
+
+  const activeFilters = useMemo(() => {
+    const items: Array<{ key: keyof RecordFilters; label: string; value: string }> = [];
+
+    if (filters.school) items.push({ key: "school", label: "School", value: filters.school });
+    if (filters.course) items.push({ key: "course", label: "Course", value: filters.course });
+    if (typeof filters.year === "number") {
+      items.push({ key: "year", label: "Year", value: String(filters.year) });
+    }
+    if (filters.status) items.push({ key: "status", label: "Status", value: filters.status });
+    if (filters.dateFrom) {
+      items.push({ key: "dateFrom", label: "From", value: filters.dateFrom });
+    }
+    if (filters.dateTo) {
+      items.push({ key: "dateTo", label: "To", value: filters.dateTo });
+    }
+    if (filters.search) items.push({ key: "search", label: "Search", value: filters.search });
+
+    return items;
+  }, [filters]);
+
+  const allVisibleSelected =
+    sortedRecords.length > 0 && sortedRecords.every((record) => selectedIds.includes(record.id));
+
+  const updateFilter = <K extends keyof RecordFilters>(key: K, value: RecordFilters[K]) => {
+    setFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const clearSingleFilter = (key: keyof RecordFilters) => {
+    setFilters((current) => ({
+      ...current,
+      [key]: key === "year" ? undefined : "",
+    }));
+  };
+
+  const clearAllFilters = () => {
+    setFilters(EMPTY_FILTERS);
+    setOpenMessage("");
+  };
+
+  const handleSchoolChange = (value: string) => {
+    setFilters((current) => ({
+      ...current,
+      school: value,
+      course: "",
+    }));
+  };
+
+  const handleCourseChange = (value: string) => {
+    setFilters((current) => ({
+      ...current,
+      course: value,
+    }));
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds((current) =>
@@ -60,6 +168,7 @@ export function ViewRecords() {
       setOpenMessage("No document available.");
       return;
     }
+
     if (type === "link") {
       try {
         const url = new URL(value);
@@ -70,6 +179,7 @@ export function ViewRecords() {
       }
       return;
     }
+
     if (type === "file") {
       if (value.startsWith("idb:")) {
         try {
@@ -88,43 +198,22 @@ export function ViewRecords() {
           return;
         }
       }
+
       if (value.startsWith("data:") || /^https?:\/\//i.test(value)) {
         window.open(value, "_blank", "noopener,noreferrer");
         setOpenMessage("");
         return;
       }
+
       setOpenMessage("Unable to open saved file.");
       return;
     }
+
     setOpenMessage("No document available.");
   };
 
-  const filteredRecords = allRecords.filter((record) => {
-    const matchesSearch =
-      record.controlNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.school.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      record.course.toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesFilter =
-      filterStatus === "all" ||
-      (filterStatus === "ongoing" && record.status === "Ongoing") ||
-      (filterStatus === "completed" && record.status === "Completed") ||
-      (filterStatus === "missing-lo" && record.workflow === "Missing Legal Opinion") ||
-      (filterStatus === "missing-moa" && record.workflow === "Missing MOA");
-
-    return matchesSearch && matchesFilter;
-  });
-  const sortedRecords = [...filteredRecords].sort((a, b) => {
-    const aPinned = pinnedIds.includes(a.id);
-    const bPinned = pinnedIds.includes(b.id);
-    if (aPinned === bPinned) return 0;
-    return aPinned ? -1 : 1;
-  });
-  const allVisibleSelected =
-    sortedRecords.length > 0 && sortedRecords.every((record) => selectedIds.includes(record.id));
-
   const formatTimestamp = (iso?: string) => {
-    if (!iso) return "—";
+    if (!iso) return "--";
     const d = new Date(iso);
     return new Intl.DateTimeFormat("en-US", {
       month: "long",
@@ -135,7 +224,7 @@ export function ViewRecords() {
       hour12: true,
     })
       .format(d)
-      .replace(",", " –");
+      .replace(",", " -");
   };
 
   const getStatusColor = (status: string) => {
@@ -149,6 +238,8 @@ export function ViewRecords() {
     }
   };
 
+  const hasActiveFilters = activeFilters.length > 0;
+
   return (
     <div className="p-8">
       <div className="mb-8">
@@ -156,19 +247,20 @@ export function ViewRecords() {
           View Records
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Browse and search all MOA and Legal Opinion records
+          Narrow down MOA and Legal Opinion records with structured, progressive filters.
         </p>
       </div>
 
       <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-800 overflow-hidden">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700 space-y-5">
           {openMessage && (
-            <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300">
+            <div className="rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-900/20 px-4 py-2.5 text-sm text-amber-700 dark:text-amber-300">
               {openMessage}
             </div>
           )}
+
           {selectedIds.length > 0 && (
-            <div className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-900/20 px-4 py-3">
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-blue-200 dark:border-blue-900 bg-blue-50/70 dark:bg-blue-900/20 px-4 py-3">
               <p className="text-sm text-blue-900 dark:text-blue-200">
                 {selectedIds.length} record{selectedIds.length > 1 ? "s" : ""} selected
               </p>
@@ -202,31 +294,156 @@ export function ViewRecords() {
               </div>
             </div>
           )}
-          <div className="flex gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="Search by control number, school, or course..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-              />
-            </div>
-            <div className="relative min-w-52">
-              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400 pointer-events-none" />
+
+          <div className="grid grid-cols-1 xl:grid-cols-5 gap-4">
+            <div className="relative xl:col-span-1">
+              <School className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
               <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full pl-10 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all appearance-none cursor-pointer"
+                value={filters.school || ""}
+                onChange={(event) => handleSchoolChange(event.target.value)}
+                className="w-full pl-9 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all appearance-none"
               >
-                <option value="all">All Records</option>
-                <option value="ongoing">Ongoing</option>
-                <option value="completed">Completed</option>
-                <option value="missing-lo">Missing Legal Opinion</option>
-                <option value="missing-moa">Missing MOA</option>
+                <option value="">Select school (required first)</option>
+                {filterOptions.schools.map((school) => (
+                  <option key={school} value={school}>
+                    {school}
+                  </option>
+                ))}
               </select>
             </div>
+
+            <div className="relative xl:col-span-1">
+              <GraduationCap className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <select
+                value={filters.course || ""}
+                onChange={(event) => handleCourseChange(event.target.value)}
+                disabled={!filters.school}
+                className="w-full pl-9 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all appearance-none disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <option value="">
+                  {filters.school ? "All courses under school" : "Select school first"}
+                </option>
+                {availableCourses.map((course) => (
+                  <option key={course} value={course}>
+                    {course}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative xl:col-span-1">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <select
+                value={normalizeFilterValue(filters.year)}
+                onChange={(event) =>
+                  updateFilter("year", event.target.value ? Number(event.target.value) : undefined)
+                }
+                className="w-full pl-9 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all appearance-none"
+              >
+                <option value="">All years</option>
+                {filterOptions.years.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative xl:col-span-1">
+              <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              <select
+                value={filters.status || ""}
+                onChange={(event) =>
+                  updateFilter(
+                    "status",
+                    (event.target.value || undefined) as RecordItem["status"] | undefined
+                  )
+                }
+                className="w-full pl-9 pr-8 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all appearance-none"
+              >
+                <option value="">All statuses</option>
+                {filterOptions.statuses.map((status) => (
+                  <option key={status} value={status}>
+                    {status}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="relative xl:col-span-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search control no., name, course..."
+                value={filters.search || ""}
+                onChange={(event) => updateFilter("search", event.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-4 items-end">
+            <div>
+              <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                <CalendarRange className="w-4 h-4" />
+                Created from
+              </label>
+              <input
+                type="date"
+                value={filters.dateFrom || ""}
+                onChange={(event) => updateFilter("dateFrom", event.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                Created to
+              </label>
+              <input
+                type="date"
+                value={filters.dateTo || ""}
+                min={filters.dateFrom || undefined}
+                onChange={(event) => updateFilter("dateTo", event.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+              />
+            </div>
+            <button
+              onClick={clearAllFilters}
+              disabled={!hasActiveFilters}
+              className="h-[42px] rounded-lg border border-gray-300 dark:border-gray-700 px-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Clear Filters
+            </button>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            {activeFilters.length > 0 ? (
+              activeFilters.map((item) => (
+                <button
+                  key={`${item.key}-${item.value}`}
+                  onClick={() => clearSingleFilter(item.key)}
+                  className="inline-flex items-center gap-2 rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 text-sm text-blue-800 dark:text-blue-200"
+                >
+                  <span className="font-medium">{item.label}:</span>
+                  <span>{item.value}</span>
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              ))
+            ) : (
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                No active filters. Start with a school to progressively narrow results.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-dashed border-gray-200 dark:border-gray-700 bg-gray-50/70 dark:bg-gray-800/40 px-4 py-3">
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              Showing <span className="font-semibold">{sortedRecords.length}</span> of{" "}
+              <span className="font-semibold">{allRecords.length}</span> records
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Filters combine with AND logic for precise retrieval.
+            </p>
           </div>
         </div>
 
@@ -245,9 +462,7 @@ export function ViewRecords() {
                         ]);
                       } else {
                         setSelectedIds((current) =>
-                          current.filter(
-                            (id) => !sortedRecords.some((record) => record.id === id)
-                          )
+                          current.filter((id) => !sortedRecords.some((record) => record.id === id))
                         );
                       }
                     }}
@@ -264,13 +479,16 @@ export function ViewRecords() {
                   Course
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+                  Year
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Status
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Workflow Stage
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                  Date &amp; Time
+                  Date and Time
                 </th>
                 <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
                   Documents
@@ -314,6 +532,9 @@ export function ViewRecords() {
                   <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
                     {record.course}
                   </td>
+                  <td className="px-6 py-4 text-sm text-gray-600 dark:text-gray-400">
+                    {record.year || "--"}
+                  </td>
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(
@@ -332,7 +553,7 @@ export function ViewRecords() {
                     </div>
                     {record.updatedAt && record.updatedAt !== record.createdAt && (
                       <div className="text-xs text-gray-400 dark:text-gray-500 whitespace-nowrap mt-0.5">
-                        ↻ {formatTimestamp(record.updatedAt)}
+                        Updated {formatTimestamp(record.updatedAt)}
                       </div>
                     )}
                   </td>
@@ -408,10 +629,13 @@ export function ViewRecords() {
           </table>
         </div>
 
-        {filteredRecords.length === 0 && (
+        {sortedRecords.length === 0 && (
           <div className="p-12 text-center">
-            <p className="text-gray-500 dark:text-gray-400">
-              No records found matching your search criteria.
+            <p className="text-lg font-medium text-gray-700 dark:text-gray-200">
+              No results found
+            </p>
+            <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+              Try adjusting the school, course, year, date range, status, or search filters.
             </p>
           </div>
         )}
@@ -420,7 +644,9 @@ export function ViewRecords() {
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete record{pendingDeleteIds.length > 1 ? "s" : ""}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete record{pendingDeleteIds.length > 1 ? "s" : ""}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               {pendingDeleteIds.length > 1
                 ? `This will permanently remove ${pendingDeleteIds.length} selected records from this view. This action cannot be undone.`

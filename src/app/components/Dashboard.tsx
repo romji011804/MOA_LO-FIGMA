@@ -1,6 +1,12 @@
+import { useEffect, useState } from "react";
 import { FileText, Clock, CheckCircle, AlertCircle, FileWarning } from "lucide-react";
 import { useNavigate } from "react-router";
-import { loadRecords } from "../records";
+import {
+  RECORDS_UPDATED_EVENT,
+  getRecordDocumentStats,
+  loadRecords,
+  type RecordItem,
+} from "../records";
 
 interface StatCardProps {
   title: string;
@@ -52,14 +58,28 @@ function AlertCard({ title, count, icon, color }: AlertCardProps) {
 
 export function Dashboard() {
   const navigate = useNavigate();
-  const records = loadRecords();
+  const [records, setRecords] = useState<RecordItem[]>(() => loadRecords());
+
+  useEffect(() => {
+    const syncRecords = () => {
+      setRecords(loadRecords());
+    };
+
+    window.addEventListener(RECORDS_UPDATED_EVENT, syncRecords);
+    window.addEventListener("focus", syncRecords);
+    document.addEventListener("visibilitychange", syncRecords);
+
+    return () => {
+      window.removeEventListener(RECORDS_UPDATED_EVENT, syncRecords);
+      window.removeEventListener("focus", syncRecords);
+      document.removeEventListener("visibilitychange", syncRecords);
+    };
+  }, []);
+
   const totalRecords = records.length;
   const ongoingRecords = records.filter((record) => record.status === "Ongoing").length;
   const completedRecords = records.filter((record) => record.status === "Completed").length;
-  const missingLegalOpinion = records.filter(
-    (record) => record.workflow === "Missing Legal Opinion"
-  ).length;
-  const missingMoa = records.filter((record) => record.workflow === "Missing MOA").length;
+  const { missingLegalOpinion, missingMoa, completeRecords } = getRecordDocumentStats(records);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -129,6 +149,12 @@ export function Dashboard() {
             count={missingMoa}
             icon={<FileWarning className="w-6 h-6 text-yellow-600 dark:text-yellow-400" />}
             color="border-yellow-200 dark:border-yellow-900 bg-yellow-50/80 dark:bg-yellow-900/20"
+          />
+          <AlertCard
+            title="Complete Records"
+            count={completeRecords}
+            icon={<CheckCircle className="w-6 h-6 text-green-600 dark:text-green-400" />}
+            color="border-green-200 dark:border-green-900 bg-green-50/80 dark:bg-green-900/20"
           />
         </div>
 

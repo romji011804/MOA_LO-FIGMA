@@ -15,6 +15,11 @@ import { useNavigate, useSearchParams } from "react-router";
 import { loadRecords, saveRecords, type RecordItem } from "../records";
 import { isIndexedDbAvailable, saveFileBlob } from "../fileStorage";
 import { generateControlNumber, generateRecordId } from "../mergeRecords";
+import {
+  initializeRecentInputsFromRecords,
+  saveRecentInput,
+} from "../recentInputHistory";
+import { RecentInputAutocomplete } from "./RecentInputAutocomplete";
 
 /** PDF/DOC/DOCX — avoid nesting <input type="file"> inside <button> (invalid HTML; breaks pickers in some browsers). */
 const DOC_ACCEPT =
@@ -43,20 +48,10 @@ export function AddRecord() {
   const [formError, setFormError] = useState("");
   const loFileInputRef = useRef<HTMLInputElement | null>(null);
   const moaFileInputRef = useRef<HTMLInputElement | null>(null);
-  const schools = [
-    "University of the Philippines",
-    "Ateneo de Manila University",
-    "De La Salle University",
-    "University of Santo Tomas",
-    "Polytechnic University of the Philippines",
-  ];
-  const courses = [
-    "Bachelor of Science in Computer Science",
-    "Bachelor of Arts in Communication",
-    "Bachelor of Science in Nursing",
-    "Bachelor of Science in Information Technology",
-    "Bachelor of Science in Business Administration",
-  ];
+
+  useEffect(() => {
+    initializeRecentInputsFromRecords(loadRecords());
+  }, []);
 
   useEffect(() => {
     if (!editId) return;
@@ -143,6 +138,7 @@ export function AddRecord() {
       return;
     }
     const now = new Date().toISOString();
+    const recordYear = new Date(now).getFullYear();
     // For new records: generate the record ID first so it can be embedded in the CN.
     const recordId = editingRecord?.id ?? generateRecordId();
     const newRecord: RecordItem = {
@@ -150,6 +146,7 @@ export function AddRecord() {
       controlNumber: editingRecord?.controlNumber ?? generateControlNumber(records, recordId),
       school: school.trim(),
       course: course.trim(),
+      year: editingRecord?.year ?? recordYear,
       status,
       workflow,
       hours: hours.trim(),
@@ -170,6 +167,8 @@ export function AddRecord() {
       ? records.map((record) => (record.id === editingRecord.id ? newRecord : record))
       : [...records, newRecord];
     saveRecords(updated);
+    saveRecentInput("school", newRecord.school);
+    saveRecentInput("course", newRecord.course);
     setFormError("");
     navigate("/view-records");
   };
@@ -196,19 +195,15 @@ export function AddRecord() {
                 <School className="w-4 h-4" />
                 School/University
               </label>
-              <input
-                type="text"
-                list="school-options"
+              <RecentInputAutocomplete
+                field="school"
                 placeholder="Enter or select school name"
                 value={school}
-                onChange={(event) => setSchool(event.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+                onChange={setSchool}
               />
-              <datalist id="school-options">
-                {schools.map((school) => (
-                  <option key={school} value={school} />
-                ))}
-              </datalist>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Recent school entries appear as you type. Use the x button to remove suggestions.
+              </p>
             </div>
 
             <div>
@@ -216,19 +211,15 @@ export function AddRecord() {
                 <BookOpen className="w-4 h-4" />
                 Course
               </label>
-              <input
-                type="text"
-                list="course-options"
+              <RecentInputAutocomplete
+                field="course"
                 placeholder="Enter or select course name"
                 value={course}
-                onChange={(event) => setCourse(event.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+                onChange={setCourse}
               />
-              <datalist id="course-options">
-                {courses.map((course) => (
-                  <option key={course} value={course} />
-                ))}
-              </datalist>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                Suggestions are stored separately from records and can be deleted anytime.
+              </p>
             </div>
 
             <div>
