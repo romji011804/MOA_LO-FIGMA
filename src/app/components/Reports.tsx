@@ -60,6 +60,7 @@ export function Reports() {
   const [saved, setSaved] = useState(false);
   const [reports, setReports] = useState<GeneratedReport[]>(() => loadReports());
   const [justGenerated, setJustGenerated] = useState(false);
+  const [downloadError, setDownloadError] = useState("");
 
   // Run auto-check on mount
   useEffect(() => {
@@ -86,6 +87,7 @@ export function Reports() {
     generateReport(settings);
     setReports(loadReports());
     setJustGenerated(true);
+    setDownloadError("");
     setTimeout(() => setJustGenerated(false), 2500);
   };
 
@@ -93,6 +95,16 @@ export function Reports() {
     const updated = reports.filter((r) => r.id !== id);
     saveReports(updated);
     setReports(updated);
+  };
+
+  const handleDownloadReport = async (report: GeneratedReport) => {
+    try {
+      setDownloadError("");
+      await downloadReport(report);
+    } catch (error) {
+      console.error("Failed to download Excel report:", error);
+      setDownloadError("Unable to generate the Excel report. Please try again.");
+    }
   };
 
   return (
@@ -237,6 +249,12 @@ export function Reports() {
             </span>
           </div>
 
+          {downloadError && (
+            <div className="mx-6 mt-5 rounded-xl border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-900/20 px-4 py-3 text-sm text-red-700 dark:text-red-300">
+              {downloadError}
+            </div>
+          )}
+
           {reports.length === 0 ? (
             <div className="p-12 text-center">
               <BarChart2 className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" />
@@ -298,9 +316,9 @@ export function Reports() {
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-2">
                           <button
-                            onClick={() => downloadReport(report)}
+                            onClick={() => handleDownloadReport(report)}
                             className="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                            title="Download JSON"
+                            title="Download Excel report"
                           >
                             <Download className="h-3.5 w-3.5" />
                             Download

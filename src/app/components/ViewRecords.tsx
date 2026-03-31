@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Search,
   Filter,
@@ -11,6 +11,7 @@ import {
   CalendarRange,
   GraduationCap,
   School,
+  ArrowUpDown,
 } from "lucide-react";
 import { useNavigate } from "react-router";
 import {
@@ -27,6 +28,8 @@ import {
   filterRecords,
   getRecordFilterOptions,
   loadRecords,
+  saveActiveRecordFilters,
+  RECORDS_UPDATED_EVENT,
   saveRecords,
   type RecordFilters,
   type RecordItem,
@@ -41,6 +44,19 @@ const EMPTY_FILTERS: RecordFilters = {
   dateTo: "",
 };
 
+type SortOption =
+  | "updated-desc"
+  | "updated-asc"
+  | "control-asc"
+  | "control-desc"
+  | "school-asc"
+  | "school-desc";
+
+function parseControlSequence(controlNumber: string) {
+  const match = controlNumber.match(/^(\d+)/);
+  return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+}
+
 function normalizeFilterValue(value?: string | number) {
   return typeof value === "number" ? String(value) : value?.trim() || "";
 }
@@ -54,6 +70,27 @@ export function ViewRecords() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [openMessage, setOpenMessage] = useState("");
   const [allRecords, setAllRecords] = useState<RecordItem[]>(() => loadRecords());
+  const [sortBy, setSortBy] = useState<SortOption>("updated-desc");
+
+  useEffect(() => {
+    const syncRecords = () => {
+      setAllRecords(loadRecords());
+    };
+
+    window.addEventListener(RECORDS_UPDATED_EVENT, syncRecords);
+    window.addEventListener("focus", syncRecords);
+    document.addEventListener("visibilitychange", syncRecords);
+
+    return () => {
+      window.removeEventListener(RECORDS_UPDATED_EVENT, syncRecords);
+      window.removeEventListener("focus", syncRecords);
+      document.removeEventListener("visibilitychange", syncRecords);
+    };
+  }, []);
+
+  useEffect(() => {
+    saveActiveRecordFilters(filters);
+  }, [filters]);
 
   const filterOptions = useMemo(() => getRecordFilterOptions(allRecords), [allRecords]);
   const availableCourses = useMemo(() => {
@@ -76,9 +113,26 @@ export function ViewRecords() {
 
       const aTime = new Date(a.updatedAt || a.createdAt || 0).getTime();
       const bTime = new Date(b.updatedAt || b.createdAt || 0).getTime();
-      return bTime - aTime;
+      const aSequence = parseControlSequence(a.controlNumber);
+      const bSequence = parseControlSequence(b.controlNumber);
+
+      switch (sortBy) {
+        case "updated-asc":
+          return aTime - bTime;
+        case "control-asc":
+          return aSequence - bSequence || a.controlNumber.localeCompare(b.controlNumber);
+        case "control-desc":
+          return bSequence - aSequence || b.controlNumber.localeCompare(a.controlNumber);
+        case "school-asc":
+          return a.school.localeCompare(b.school) || a.course.localeCompare(b.course);
+        case "school-desc":
+          return b.school.localeCompare(a.school) || b.course.localeCompare(a.course);
+        case "updated-desc":
+        default:
+          return bTime - aTime;
+      }
     });
-  }, [filteredRecords, pinnedIds]);
+  }, [filteredRecords, pinnedIds, sortBy]);
 
   const activeFilters = useMemo(() => {
     const items: Array<{ key: keyof RecordFilters; label: string; value: string }> = [];
@@ -441,9 +495,26 @@ export function ViewRecords() {
               Showing <span className="font-semibold">{sortedRecords.length}</span> of{" "}
               <span className="font-semibold">{allRecords.length}</span> records
             </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Filters combine with AND logic for precise retrieval.
-            </p>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <ArrowUpDown className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                <select
+                  value={sortBy}
+                  onChange={(event) => setSortBy(event.target.value as SortOption)}
+                  className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 py-2 pl-9 pr-8 text-sm text-gray-700 dark:text-gray-300 outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+                >
+                  <option value="updated-desc">Newest updated</option>
+                  <option value="updated-asc">Oldest updated</option>
+                  <option value="control-asc">Control number ascending</option>
+                  <option value="control-desc">Control number descending</option>
+                  <option value="school-asc">School A-Z</option>
+                  <option value="school-desc">School Z-A</option>
+                </select>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Filters combine with AND logic for precise retrieval.
+              </p>
+            </div>
           </div>
         </div>
 

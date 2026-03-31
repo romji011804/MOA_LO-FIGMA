@@ -11,9 +11,11 @@ export interface RecordItem {
   moaValue?: string;
   moaFileName?: string;
   moaType?: "file" | "link";
+  moaDate?: string;
   legalOpinionValue?: string;
   legalOpinionFileName?: string;
   legalOpinionType?: "file" | "link";
+  legalOpinionDate?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -41,6 +43,14 @@ export interface RecordDocumentStats {
   completeRecords: number;
 }
 
+export type WorkflowStage =
+  | "For Review"
+  | "Approved"
+  | "Missing Legal Opinion"
+  | "Missing MOA";
+
+export type UserSelectableWorkflowStage = "For Review" | "Approved";
+
 interface RecordIndex {
   school: Map<string, RecordItem[]>;
   course: Map<string, RecordItem[]>;
@@ -48,7 +58,15 @@ interface RecordIndex {
 }
 
 const STORAGE_KEY = "moa-lo-records";
+const FILTERS_STORAGE_KEY = "moa-lo-active-record-filters";
 export const RECORDS_UPDATED_EVENT = "moa-lo-records-updated";
+
+interface ParsedControlNumber {
+  sequence: number;
+  year: number;
+  machineId: string;
+  recordId: string;
+}
 
 export const DEFAULT_RECORDS: RecordItem[] = [
   {
@@ -128,6 +146,110 @@ function extractYearFromControlNumber(controlNumber: string) {
   return match ? Number(match[1]) : undefined;
 }
 
+function normalizeMachineId(machineId: string) {
+  return machineId.trim().replace(/\s+/g, "").toUpperCase() || "MAIN";
+}
+
+function getFallbackMachineId() {
+  if (typeof window === "undefined") {
+    return "MAIN";
+  }
+
+  const storedMachineId = window.localStorage.getItem("machine-id");
+  return storedMachineId ? normalizeMachineId(storedMachineId) : "MAIN";
+}
+
+function parseControlNumber(controlNumber: string): ParsedControlNumber | null {
+  const currentFormat = controlNumber.match(/^(\d+)-(\d{4})-([^-]+)-(.+)$/);
+  if (currentFormat) {
+    const [, sequence, year, machineId, recordId] = currentFormat;
+    return {
+      sequence: Number(sequence),
+      year: Number(year),
+      machineId: normalizeMachineId(machineId),
+      recordId,
+    };
+  }
+
+  const legacyFormat = controlNumber.match(/^MOA-(\d{4})-([^-]+)-(\d+)$/i);
+  if (legacyFormat) {
+    const [, year, machineId, sequence] = legacyFormat;
+    return {
+      sequence: Number(sequence),
+      year: Number(year),
+      machineId: normalizeMachineId(machineId),
+      recordId: "legacy",
+    };
+  }
+
+  return null;
+}
+
+function formatControlNumber(parsed: ParsedControlNumber) {
+  return `${String(parsed.sequence).padStart(3, "0")}-${parsed.year}-${parsed.machineId}-${parsed.recordId}`;
+}
+
+function getLowestAvailableSequence(usedSequences: Set<number>) {
+  let candidate = 1;
+  while (usedSequences.has(candidate)) {
+    candidate += 1;
+  }
+  return candidate;
+}
+
+function normalizeControlNumberRecord(record: RecordItem): ParsedControlNumber {
+  const parsed = parseControlNumber(record.controlNumber);
+  if (parsed && parsed.sequence > 0 && Number.isFinite(parsed.year)) {
+    return {
+      ...parsed,
+      recordId: parsed.recordId === "legacy" ? record.id : parsed.recordId,
+    };
+  }
+
+  return {
+    sequence: 0,
+    year: getRecordYear(record) ?? new Date().getFullYear(),
+    machineId: getFallbackMachineId(),
+    recordId: record.id,
+  };
+}
+
+function rebalanceControlNumbers(records: RecordItem[]) {
+  const usedSequencesByYear = new Map<number, Set<number>>();
+  let changed = false;
+
+  const normalizedRecords = records.map((record) => {
+    const parsed = normalizeControlNumberRecord(record);
+    const usedSequences = usedSequencesByYear.get(parsed.year) ?? new Set<number>();
+    usedSequencesByYear.set(parsed.year, usedSequences);
+
+    let nextControlNumber = record.controlNumber;
+
+    if (parsed.sequence <= 0 || usedSequences.has(parsed.sequence)) {
+      const nextSequence = getLowestAvailableSequence(usedSequences);
+      parsed.sequence = nextSequence;
+      nextControlNumber = formatControlNumber(parsed);
+      changed = changed || nextControlNumber !== record.controlNumber;
+    }
+
+    usedSequences.add(parsed.sequence);
+
+    if (nextControlNumber === record.controlNumber) {
+      return record;
+    }
+
+    return {
+      ...record,
+      controlNumber: nextControlNumber,
+    };
+  });
+
+  return {
+    records: normalizedRecords,
+    changed,
+  };
+}
+
 export function getRecordYear(record: RecordItem) {
   if (typeof record.year === "number" && Number.isFinite(record.year)) {
     return record.year;
@@ -141,13 +263,6 @@ export function getRecordYear(record: RecordItem) {
   }
 
   return extractYearFromControlNumber(record.controlNumber);
-}
-
-function ensureRecordShape(record: RecordItem): RecordItem {
-  const normalizedYear = getRecordYear(record);
-  return normalizedYear && record.year !== normalizedYear
-    ? { ...record, year: normalizedYear }
-    : record;
 }
 
 function buildRecordIndex(records: RecordItem[]): RecordIndex {
@@ -244,21 +359,31 @@ function matchesSearch(record: RecordItem, search?: string) {
 
 export function loadRecords(): RecordItem[] {
   if (typeof window === "undefined") {
-    return DEFAULT_RECORDS.map(ensureRecordShape);
+    return rebalanceControlNumbers(DEFAULT_RECORDS.map(ensureRecordShape)).records;
   }
 
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) {
-      return DEFAULT_RECORDS.map(ensureRecordShape);
+      const seededRecords = rebalanceControlNumbers(DEFAULT_RECORDS.map(ensureRecordShape)).records;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededRecords));
+      return seededRecords;
     }
 
     const parsed = JSON.parse(raw) as RecordItem[];
-    return Array.isArray(parsed)
-      ? parsed.map(ensureRecordShape)
-      : DEFAULT_RECORDS.map(ensureRecordShape);
+    if (!Array.isArray(parsed)) {
+      const seededRecords = rebalanceControlNumbers(DEFAULT_RECORDS.map(ensureRecordShape)).records;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededRecords));
+      return seededRecords;
+    }
+
+    const normalized = rebalanceControlNumbers(parsed.map(ensureRecordShape));
+    if (normalized.changed) {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized.records));
+    }
+    return normalized.records;
   } catch {
-    return DEFAULT_RECORDS.map(ensureRecordShape);
+    return rebalanceControlNumbers(DEFAULT_RECORDS.map(ensureRecordShape)).records;
   }
 }
 
@@ -267,9 +392,38 @@ export function saveRecords(records: RecordItem[]) {
     return;
   }
 
-  const normalizedRecords = records.map(ensureRecordShape);
+  const normalizedRecords = rebalanceControlNumbers(records.map(ensureRecordShape)).records;
   window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedRecords));
   window.dispatchEvent(new CustomEvent(RECORDS_UPDATED_EVENT, { detail: normalizedRecords }));
+}
+
+export function loadActiveRecordFilters(): RecordFilters {
+  if (typeof window === "undefined") {
+    return {};
+  }
+
+  try {
+    const raw = window.localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (!raw) {
+      return {};
+    }
+
+    const parsed = JSON.parse(raw) as RecordFilters;
+    return typeof parsed === "object" && parsed ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveActiveRecordFilters(filters: RecordFilters) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const normalizedFilters = Object.fromEntries(
+    Object.entries(filters).filter(([, value]) => value !== undefined && value !== "")
+  );
+  window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(normalizedFilters));
 }
 
 function hasDocumentReference(value?: string | null) {
@@ -282,6 +436,39 @@ export function hasLegalOpinion(record: RecordItem) {
 
 export function hasMoa(record: RecordItem) {
   return hasDocumentReference(record.moaValue);
+}
+
+export function deriveWorkflow(
+  record: Pick<RecordItem, "status" | "moaValue" | "legalOpinionValue">,
+  preferredWorkflow?: string
+): WorkflowStage {
+  const hasLo = hasLegalOpinion(record as RecordItem);
+  const hasMoaDocument = hasMoa(record as RecordItem);
+
+  if (!hasLo) {
+    return "Missing Legal Opinion";
+  }
+
+  if (!hasMoaDocument) {
+    return "Missing MOA";
+  }
+
+  if (preferredWorkflow === "Approved" || preferredWorkflow === "For Review") {
+    return preferredWorkflow;
+  }
+
+  return record.status === "Completed" ? "Approved" : "For Review";
+}
+
+function ensureRecordShape(record: RecordItem): RecordItem {
+  const normalizedYear = getRecordYear(record);
+  const derivedWorkflow = deriveWorkflow(record);
+
+  return {
+    ...record,
+    year: normalizedYear,
+    workflow: derivedWorkflow,
+  };
 }
 
 export function getRecordDocumentStats(records: RecordItem[]): RecordDocumentStats {

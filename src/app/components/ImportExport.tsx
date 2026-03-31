@@ -1,5 +1,19 @@
-import { useState } from "react";
-import { Download, Upload, AlertCircle, CheckCircle, Info, Edit2, FileCheck } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  Download,
+  Upload,
+  AlertCircle,
+  CheckCircle,
+  Info,
+  Edit2,
+  FileCheck,
+  Search,
+  Filter,
+  GraduationCap,
+  School,
+  CalendarRange,
+  X,
+} from "lucide-react";
 import {
   exportRecordsToJSON,
   importRecordsFromJSON,
@@ -7,7 +21,25 @@ import {
   setMachineId,
   type MergeResult,
 } from "../mergeRecords";
-import { loadRecords, type RecordItem } from "../records";
+import {
+  filterRecords,
+  getRecordFilterOptions,
+  loadRecords,
+  type RecordFilters,
+  type RecordItem,
+} from "../records";
+
+const EMPTY_EXPORT_FILTERS: RecordFilters = {
+  school: "",
+  course: "",
+  search: "",
+  dateFrom: "",
+  dateTo: "",
+};
+
+function normalizeFilterValue(value?: string | number) {
+  return typeof value === "number" ? String(value) : value?.trim() || "";
+}
 
 export function ImportExport() {
   const [importResult, setImportResult] = useState<MergeResult | null>(null);
@@ -16,7 +48,32 @@ export function ImportExport() {
   const [editValue, setEditValue] = useState(machineId);
   const [showSelectRecords, setShowSelectRecords] = useState(false);
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
+  const [exportFilters, setExportFilters] = useState<RecordFilters>(EMPTY_EXPORT_FILTERS);
   const allRecords = loadRecords();
+  const filterOptions = useMemo(() => getRecordFilterOptions(allRecords), [allRecords]);
+  const availableCourses = useMemo(() => {
+    if (!exportFilters.school) {
+      return [];
+    }
+    return filterOptions.coursesBySchool[exportFilters.school.trim().toLowerCase()] ?? [];
+  }, [exportFilters.school, filterOptions.coursesBySchool]);
+  const exportableRecords = useMemo(
+    () => filterRecords(allRecords, exportFilters),
+    [allRecords, exportFilters]
+  );
+  const hasActiveExportFilters = useMemo(
+    () =>
+      Boolean(
+        exportFilters.school ||
+          exportFilters.course ||
+          exportFilters.search ||
+          exportFilters.status ||
+          exportFilters.dateFrom ||
+          exportFilters.dateTo ||
+          typeof exportFilters.year === "number"
+      ),
+    [exportFilters]
+  );
 
   const handleExportAll = () => {
     const json = exportRecordsToJSON();
@@ -24,6 +81,7 @@ export function ImportExport() {
   };
 
   const handleExportSelected = () => {
+    setExportFilters(EMPTY_EXPORT_FILTERS);
     setShowSelectRecords(true);
   };
 
@@ -58,11 +116,42 @@ export function ImportExport() {
   };
 
   const toggleSelectAll = () => {
-    if (selectedRecords.size === allRecords.length) {
-      setSelectedRecords(new Set());
-    } else {
-      setSelectedRecords(new Set(allRecords.map((r) => r.id)));
+    const visibleIds = exportableRecords.map((record) => record.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedRecords.has(id));
+
+    if (allVisibleSelected) {
+      setSelectedRecords((current) => {
+        const next = new Set(current);
+        visibleIds.forEach((id) => next.delete(id));
+        return next;
+      });
+      return;
     }
+
+    setSelectedRecords((current) => {
+      const next = new Set(current);
+      visibleIds.forEach((id) => next.add(id));
+      return next;
+    });
+  };
+
+  const updateExportFilter = <K extends keyof RecordFilters>(key: K, value: RecordFilters[K]) => {
+    setExportFilters((current) => ({ ...current, [key]: value }));
+  };
+
+  const clearSingleExportFilter = (key: keyof RecordFilters) => {
+    setExportFilters((current) => ({
+      ...current,
+      [key]: key === "year" ? undefined : "",
+    }));
+  };
+
+  const handleExportSchoolChange = (value: string) => {
+    setExportFilters((current) => ({
+      ...current,
+      school: value,
+      course: "",
+    }));
   };
 
   const handleImport = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,12 +228,197 @@ export function ImportExport() {
                   onClick={toggleSelectAll}
                   className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
                 >
-                  {selectedRecords.size === allRecords.length ? "Deselect All" : "Select All"}
+                  {exportableRecords.length > 0 &&
+                  exportableRecords.every((record) => selectedRecords.has(record.id))
+                    ? "Deselect Visible"
+                    : "Select Visible"}
                 </button>
               </div>
 
+              <div className="mb-5 space-y-4 rounded-xl border border-gray-200 dark:border-gray-700 bg-gray-50/80 dark:bg-gray-800/60 p-4">
+                <div className="grid grid-cols-1 xl:grid-cols-5 gap-3">
+                  <div className="relative">
+                    <School className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={exportFilters.school || ""}
+                      onChange={(event) => handleExportSchoolChange(event.target.value)}
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 pl-9 pr-8 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">Select school</option>
+                      {filterOptions.schools.map((school) => (
+                        <option key={school} value={school}>
+                          {school}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <GraduationCap className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={exportFilters.course || ""}
+                      onChange={(event) => updateExportFilter("course", event.target.value)}
+                      disabled={!exportFilters.school}
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 pl-9 pr-8 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <option value="">
+                        {exportFilters.school ? "All courses under school" : "Select school first"}
+                      </option>
+                      {availableCourses.map((course) => (
+                        <option key={course} value={course}>
+                          {course}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={normalizeFilterValue(exportFilters.year)}
+                      onChange={(event) =>
+                        updateExportFilter(
+                          "year",
+                          event.target.value ? Number(event.target.value) : undefined
+                        )
+                      }
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 pl-9 pr-8 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All years</option>
+                      {filterOptions.years.map((year) => (
+                        <option key={year} value={year}>
+                          {year}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <Filter className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <select
+                      value={exportFilters.status || ""}
+                      onChange={(event) =>
+                        updateExportFilter(
+                          "status",
+                          (event.target.value || undefined) as RecordItem["status"] | undefined
+                        )
+                      }
+                      className="w-full appearance-none rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 pl-9 pr-8 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="">All statuses</option>
+                      {filterOptions.statuses.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Search control no., school, course..."
+                      value={exportFilters.search || ""}
+                      onChange={(event) => updateExportFilter("search", event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 py-2.5 pl-9 pr-4 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-[1fr_1fr_auto] gap-3 items-end">
+                  <div>
+                    <label className="mb-2 flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+                      <CalendarRange className="h-4 w-4" />
+                      Created from
+                    </label>
+                    <input
+                      type="date"
+                      value={exportFilters.dateFrom || ""}
+                      onChange={(event) => updateExportFilter("dateFrom", event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Created to
+                    </label>
+                    <input
+                      type="date"
+                      value={exportFilters.dateTo || ""}
+                      min={exportFilters.dateFrom || undefined}
+                      onChange={(event) => updateExportFilter("dateTo", event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-4 py-2.5 text-sm text-gray-900 dark:text-white outline-none transition-all focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setExportFilters(EMPTY_EXPORT_FILTERS)}
+                    disabled={!hasActiveExportFilters}
+                    className="h-[42px] rounded-lg border border-gray-300 dark:border-gray-600 px-4 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    Clear Filters
+                  </button>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  {hasActiveExportFilters ? (
+                    ([
+                      exportFilters.school
+                        ? { key: "school" as const, label: "School", value: exportFilters.school }
+                        : null,
+                      exportFilters.course
+                        ? { key: "course" as const, label: "Course", value: exportFilters.course }
+                        : null,
+                      typeof exportFilters.year === "number"
+                        ? {
+                            key: "year" as const,
+                            label: "Year",
+                            value: String(exportFilters.year),
+                          }
+                        : null,
+                      exportFilters.status
+                        ? { key: "status" as const, label: "Status", value: exportFilters.status }
+                        : null,
+                      exportFilters.dateFrom
+                        ? { key: "dateFrom" as const, label: "From", value: exportFilters.dateFrom }
+                        : null,
+                      exportFilters.dateTo
+                        ? { key: "dateTo" as const, label: "To", value: exportFilters.dateTo }
+                        : null,
+                      exportFilters.search
+                        ? { key: "search" as const, label: "Search", value: exportFilters.search }
+                        : null,
+                    ]
+                      .filter(Boolean) as Array<{
+                      key: keyof RecordFilters;
+                      label: string;
+                      value: string;
+                    }>).map((item) => (
+                      <button
+                        key={`${item.key}-${item.value}`}
+                        onClick={() => clearSingleExportFilter(item.key)}
+                        className="inline-flex items-center gap-2 rounded-full border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 px-3 py-1 text-sm text-blue-800 dark:text-blue-200"
+                      >
+                        <span className="font-medium">{item.label}:</span>
+                        <span>{item.value}</span>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    ))
+                  ) : (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      Use filters to quickly find the records you want to export.
+                    </p>
+                  )}
+                </div>
+
+                <div className="rounded-lg border border-dashed border-gray-200 dark:border-gray-700 bg-white/70 dark:bg-gray-900/30 px-4 py-3 text-sm text-gray-700 dark:text-gray-300">
+                  Showing <span className="font-semibold">{exportableRecords.length}</span> of{" "}
+                  <span className="font-semibold">{allRecords.length}</span> records in Selected Export
+                </div>
+              </div>
+
               <div className="space-y-2">
-                {allRecords.map((record) => (
+                {exportableRecords.map((record) => (
                   <label
                     key={record.id}
                     className="flex items-start gap-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer transition-colors"
@@ -181,9 +455,9 @@ export function ImportExport() {
                 ))}
               </div>
 
-              {allRecords.length === 0 && (
+              {exportableRecords.length === 0 && (
                 <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  No records available to export
+                  No records match the current export filters
                 </div>
               )}
             </div>

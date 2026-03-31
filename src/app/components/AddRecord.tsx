@@ -12,7 +12,13 @@ import {
   Link as LinkIcon,
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router";
-import { loadRecords, saveRecords, type RecordItem } from "../records";
+import {
+  deriveWorkflow,
+  loadRecords,
+  saveRecords,
+  type RecordItem,
+  type UserSelectableWorkflowStage,
+} from "../records";
 import { isIndexedDbAvailable, saveFileBlob } from "../fileStorage";
 import { generateControlNumber, generateRecordId } from "../mergeRecords";
 import {
@@ -36,7 +42,7 @@ export function AddRecord() {
   const [hours, setHours] = useState("");
   const [dateReceived, setDateReceived] = useState("");
   const [status, setStatus] = useState<"" | "Ongoing" | "Completed">("");
-  const [workflow, setWorkflow] = useState("");
+  const [workflow, setWorkflow] = useState<UserSelectableWorkflowStage>("For Review");
   const [legalOpinionLink, setLegalOpinionLink] = useState("");
   const [moaLink, setMoaLink] = useState("");
   const [legalOpinionFileName, setLegalOpinionFileName] = useState("");
@@ -62,7 +68,7 @@ export function AddRecord() {
     setHours(record.hours || "");
     setDateReceived(record.dateReceived || "");
     setStatus(record.status);
-    setWorkflow(record.workflow);
+    setWorkflow(record.workflow === "Approved" ? "Approved" : "For Review");
     setLoUploadType(record.legalOpinionType || "file");
     setMoaUploadType(record.moaType || "file");
     if (record.legalOpinionType === "link") {
@@ -93,6 +99,16 @@ export function AddRecord() {
     setFormError("");
   };
 
+  const clearLoInput = () => {
+    setLegalOpinionFileName("");
+    setLegalOpinionFileData("");
+    setLegalOpinionFile(null);
+    setLegalOpinionLink("");
+    if (loFileInputRef.current) {
+      loFileInputRef.current.value = "";
+    }
+  };
+
   const assignMoaFile = (file: File | undefined) => {
     if (!file) {
       setMoaFileName("");
@@ -106,9 +122,19 @@ export function AddRecord() {
     setFormError("");
   };
 
+  const clearMoaInput = () => {
+    setMoaFileName("");
+    setMoaFileData("");
+    setMoaFile(null);
+    setMoaLink("");
+    if (moaFileInputRef.current) {
+      moaFileInputRef.current.value = "";
+    }
+  };
+
   const handleSave = async () => {
-    if (!school.trim() || !course.trim() || !status || !workflow) {
-      setFormError("Please complete School, Course, Status, and Workflow Stage.");
+    if (!school.trim() || !course.trim() || !status) {
+      setFormError("Please complete School, Course, and Status.");
       return;
     }
 
@@ -139,6 +165,21 @@ export function AddRecord() {
     }
     const now = new Date().toISOString();
     const recordYear = new Date(now).getFullYear();
+    const resolvedLegalOpinionDate = nextLoValue
+      ? editingRecord?.legalOpinionValue === nextLoValue
+        ? editingRecord.legalOpinionDate
+        : now
+      : undefined;
+    const resolvedMoaDate = nextMoaValue
+      ? editingRecord?.moaValue === nextMoaValue
+        ? editingRecord.moaDate
+        : now
+      : undefined;
+    const resolvedWorkflow = deriveWorkflow({
+      status,
+      moaValue: nextMoaValue,
+      legalOpinionValue: nextLoValue,
+    }, workflow);
     // For new records: generate the record ID first so it can be embedded in the CN.
     const recordId = editingRecord?.id ?? generateRecordId();
     const newRecord: RecordItem = {
@@ -148,7 +189,7 @@ export function AddRecord() {
       course: course.trim(),
       year: editingRecord?.year ?? recordYear,
       status,
-      workflow,
+      workflow: resolvedWorkflow,
       hours: hours.trim(),
       dateReceived,
       moaType: moaUploadType,
@@ -157,8 +198,10 @@ export function AddRecord() {
         moaUploadType === "file" && moaFileName ? moaFileName : undefined,
       legalOpinionType: loUploadType,
       legalOpinionValue: nextLoValue,
+      legalOpinionDate: resolvedLegalOpinionDate,
       legalOpinionFileName:
         loUploadType === "file" && legalOpinionFileName ? legalOpinionFileName : undefined,
+      moaDate: resolvedMoaDate,
       createdAt: editingRecord?.createdAt ?? now,
       updatedAt: now,
     };
@@ -274,15 +317,17 @@ export function AddRecord() {
               </label>
               <select
                 value={workflow}
-                onChange={(event) => setWorkflow(event.target.value)}
+                onChange={(event) =>
+                  setWorkflow(event.target.value as UserSelectableWorkflowStage)
+                }
                 className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
               >
-                <option value="">Select workflow stage</option>
                 <option value="For Review">For Review</option>
                 <option value="Approved">Approved</option>
-                <option value="Missing Legal Opinion">Missing Legal Opinion</option>
-                <option value="Missing MOA">Missing MOA</option>
               </select>
+              <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                You can choose the stage, but missing LO or MOA will still automatically override it.
+              </p>
             </div>
           </div>
 
@@ -321,6 +366,13 @@ export function AddRecord() {
                 >
                   <LinkIcon className="w-4 h-4 inline mr-2" />
                   Paste Link
+                </button>
+                <button
+                  type="button"
+                  onClick={clearLoInput}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500 transition-all duration-200"
+                >
+                  Clear
                 </button>
               </div>
 
@@ -363,13 +415,24 @@ export function AddRecord() {
                   />
                 </label>
               ) : (
-                <input
-                  type="url"
-                  placeholder="Paste document link here"
-                  value={legalOpinionLink}
-                  onChange={(event) => setLegalOpinionLink(event.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-                />
+                <div className="space-y-3">
+                  <input
+                    type="url"
+                    placeholder="Paste document link here"
+                    value={legalOpinionLink}
+                    onChange={(event) => setLegalOpinionLink(event.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+                  />
+                  {legalOpinionLink && (
+                    <button
+                      type="button"
+                      onClick={clearLoInput}
+                      className="inline-flex items-center rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Clear link
+                    </button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -406,6 +469,13 @@ export function AddRecord() {
                 >
                   <LinkIcon className="w-4 h-4 inline mr-2" />
                   Paste Link
+                </button>
+                <button
+                  type="button"
+                  onClick={clearMoaInput}
+                  className="px-4 py-2 rounded-lg text-sm font-medium border border-gray-300 dark:border-gray-500 bg-white dark:bg-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-500 transition-all duration-200"
+                >
+                  Clear
                 </button>
               </div>
 
@@ -448,13 +518,24 @@ export function AddRecord() {
                   />
                 </label>
               ) : (
-                <input
-                  type="url"
-                  placeholder="Paste document link here"
-                  value={moaLink}
-                  onChange={(event) => setMoaLink(event.target.value)}
-                  className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
-                />
+                <div className="space-y-3">
+                  <input
+                    type="url"
+                    placeholder="Paste document link here"
+                    value={moaLink}
+                    onChange={(event) => setMoaLink(event.target.value)}
+                    className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent outline-none transition-all"
+                  />
+                  {moaLink && (
+                    <button
+                      type="button"
+                      onClick={clearMoaInput}
+                      className="inline-flex items-center rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-1.5 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      Clear link
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           </div>

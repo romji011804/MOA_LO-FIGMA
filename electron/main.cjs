@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -126,6 +126,22 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getDataPath', () => {
   return app.getPath('userData');
+});
+
+ipcMain.handle('dialog:showSaveDialog', async (event, options = {}) => {
+  const window = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  const result = await dialog.showSaveDialog(window, options);
+  return result.canceled ? null : result.filePath;
+});
+
+ipcMain.handle('file:saveBinary', async (event, { filePath, data }) => {
+  if (!filePath) {
+    throw new Error('No file path provided.');
+  }
+
+  const buffer = Buffer.isBuffer(data) ? data : Buffer.from(data);
+  await fs.promises.writeFile(filePath, buffer);
+  return { success: true, filePath };
 });
 
 // Window control handlers

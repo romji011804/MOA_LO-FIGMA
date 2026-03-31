@@ -188,4 +188,19 @@ contextBridge.exposeInMainWorld('electronAPI', {
    * @returns {Promise<string[]>} - Selected file paths
    */
   showOpenDialog: (options) => ipcRenderer.invoke('dialog:showOpenDialog', options),
+
+  /**
+   * Show save file dialog
+   * @param {object} options - Dialog options
+   * @returns {Promise<string | null>} - Selected file path
+   */
+  showSaveDialog: (options) => ipcRenderer.invoke('dialog:showSaveDialog', options),
+
+  /**
+   * Save binary data to a file
+   * @param {string} filePath - Absolute file path
+   * @param {Uint8Array | number[]} data - Binary file data
+   * @returns {Promise<{ success: boolean, filePath: string }>}
+   */
+  saveBinaryFile: (filePath, data) => ipcRenderer.invoke('file:saveBinary', { filePath, data }),
 });
