@@ -49,6 +49,8 @@ export function ImportExport() {
   const [showSelectRecords, setShowSelectRecords] = useState(false);
   const [selectedRecords, setSelectedRecords] = useState<Set<string>>(new Set());
   const [exportFilters, setExportFilters] = useState<RecordFilters>(EMPTY_EXPORT_FILTERS);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
   const allRecords = loadRecords();
   const filterOptions = useMemo(() => getRecordFilterOptions(allRecords), [allRecords]);
   const availableCourses = useMemo(() => {
@@ -75,9 +77,14 @@ export function ImportExport() {
     [exportFilters]
   );
 
-  const handleExportAll = () => {
-    const json = exportRecordsToJSON();
-    downloadJSON(json, `moa-records-${machineId}-${new Date().toISOString().split("T")[0]}.json`);
+  const handleExportAll = async () => {
+    setIsExporting(true);
+    try {
+      const json = await exportRecordsToJSON();
+      downloadJSON(json, `moa-records-${machineId}-${new Date().toISOString().split("T")[0]}.json`);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleExportSelected = () => {
@@ -85,12 +92,17 @@ export function ImportExport() {
     setShowSelectRecords(true);
   };
 
-  const handleConfirmExport = () => {
+  const handleConfirmExport = async () => {
     const recordsToExport = allRecords.filter((record) => selectedRecords.has(record.id));
-    const json = JSON.stringify(recordsToExport, null, 2);
-    downloadJSON(json, `moa-records-selected-${machineId}-${new Date().toISOString().split("T")[0]}.json`);
-    setShowSelectRecords(false);
-    setSelectedRecords(new Set());
+    setIsExporting(true);
+    try {
+      const json = await exportRecordsToJSON(recordsToExport);
+      downloadJSON(json, `moa-records-selected-${machineId}-${new Date().toISOString().split("T")[0]}.json`);
+      setShowSelectRecords(false);
+      setSelectedRecords(new Set());
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const downloadJSON = (json: string, filename: string) => {
@@ -159,10 +171,15 @@ export function ImportExport() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       const content = e.target?.result as string;
-      const result = importRecordsFromJSON(content);
-      setImportResult(result);
+      setIsImporting(true);
+      try {
+        const result = await importRecordsFromJSON(content);
+        setImportResult(result);
+      } finally {
+        setIsImporting(false);
+      }
     };
     reader.readAsText(file);
     event.target.value = ""; // Reset input
@@ -474,11 +491,13 @@ export function ImportExport() {
               </button>
               <button
                 onClick={handleConfirmExport}
-                disabled={selectedRecords.size === 0}
+                disabled={selectedRecords.size === 0 || isExporting}
                 className="px-6 py-2.5 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
               >
                 <Download className="w-5 h-5" />
-                Export {selectedRecords.size} Record{selectedRecords.size !== 1 ? "s" : ""}
+                {isExporting
+                  ? "Exporting..."
+                  : `Export ${selectedRecords.size} Record${selectedRecords.size !== 1 ? "s" : ""}`}
               </button>
             </div>
           </div>
@@ -561,17 +580,18 @@ export function ImportExport() {
           </div>
 
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Export records from this computer to a JSON file. Share this file with
-            other computers to merge records.
+            Export records from this computer to a JSON file. Attached LO and MOA
+            files are included so other computers can restore the full record.
           </p>
 
           <div className="space-y-3">
             <button
               onClick={handleExportAll}
-              className="w-full px-6 py-3 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+              disabled={isExporting}
+              className="w-full px-6 py-3 rounded-lg bg-green-600 text-white font-medium hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               <Download className="w-5 h-5" />
-              Export All Records ({allRecords.length})
+              {isExporting ? "Exporting..." : `Export All Records (${allRecords.length})`}
             </button>
 
             <button
@@ -602,18 +622,19 @@ export function ImportExport() {
           </div>
 
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            Import records from another computer. Duplicate control numbers will be
-            automatically detected and skipped.
+            Import records from another computer. Embedded LO and MOA files will be
+            restored together with the record data.
           </p>
 
           <label className="w-full px-6 py-3 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700 transition-colors flex items-center justify-center gap-2 cursor-pointer">
             <Upload className="w-5 h-5" />
-            Import Records
+            {isImporting ? "Importing..." : "Import Records"}
             <input
               type="file"
               accept=".json"
               onChange={handleImport}
               className="sr-only"
+              disabled={isImporting}
             />
           </label>
         </div>
@@ -690,7 +711,7 @@ export function ImportExport() {
                 1. Export from PC 1
               </div>
               <p className="text-gray-600 dark:text-gray-400">
-                Click "Export All Records" to save records to a JSON file
+                Click "Export All Records" to save records and attached LO/MOA files to a JSON file
               </p>
             </div>
             <div>
@@ -706,8 +727,8 @@ export function ImportExport() {
                 3. Import to PC 2
               </div>
               <p className="text-gray-600 dark:text-gray-400">
-                Click "Import Records" and select the file. Duplicates are automatically
-                skipped
+                Click "Import Records" and select the file. The records and attached
+                LO/MOA files will be restored automatically
               </p>
             </div>
           </div>

@@ -1,4 +1,5 @@
-import type { RecordItem } from "./records";
+import type { RecordItem } from "./records.ts";
+import { readPersistentValue, writePersistentValue } from "./persistentState.ts";
 
 export type RecentInputFieldKey = "school" | "course";
 
@@ -44,7 +45,7 @@ export function loadRecentInputHistory(): RecentHistoryStore {
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersistentValue(STORAGE_KEY);
     if (!raw) {
       return EMPTY_HISTORY;
     }
@@ -68,7 +69,7 @@ export function saveRecentInputHistory(history: RecentHistoryStore) {
     return;
   }
 
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+  writePersistentValue(STORAGE_KEY, JSON.stringify(history));
 }
 
 export function getRecentInputs(field: RecentInputFieldKey) {

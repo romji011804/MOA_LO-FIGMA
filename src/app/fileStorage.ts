@@ -63,3 +63,61 @@ export async function getFileBlob(key: string): Promise<Blob | null> {
   return value;
 }
 
+export async function hasStoredFile(key: string): Promise<boolean> {
+  if (!key.startsWith("idb:")) {
+    return false;
+  }
+
+  try {
+    const blob = await getFileBlob(key);
+    return blob instanceof Blob;
+  } catch {
+    return false;
+  }
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer) {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary);
+}
+
+function base64ToUint8Array(base64: string) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+export interface ExportableStoredFile {
+  mimeType: string;
+  base64Data: string;
+}
+
+export async function exportStoredFile(key: string): Promise<ExportableStoredFile | null> {
+  if (!key.startsWith("idb:")) {
+    return null;
+  }
+
+  const blob = await getFileBlob(key);
+  if (!blob) {
+    return null;
+  }
+
+  return {
+    mimeType: blob.type || "application/octet-stream",
+    base64Data: arrayBufferToBase64(await blob.arrayBuffer()),
+  };
+}
+
+export async function importStoredFile(file: ExportableStoredFile): Promise<string> {
+  const bytes = base64ToUint8Array(file.base64Data);
+  const blob = new Blob([bytes], { type: file.mimeType || "application/octet-stream" });
+  return saveFileBlob(blob);
+}
+

@@ -1,4 +1,11 @@
-import { RecordItem, loadRecords, saveRecords } from "./records";
+import { loadRecords, saveRecords } from "./records.ts";
+import type { RecordItem } from "./records.ts";
+import { readPersistentValue, writePersistentValue } from "./persistentState.ts";
+import {
+  exportStoredFile,
+  importStoredFile,
+  type ExportableStoredFile,
+} from "./fileStorage.ts";
 
 export interface MergeResult {
   imported: number;
@@ -8,15 +15,27 @@ export interface MergeResult {
   errors: string[];
 }
 
+interface PortableRecordExport {
+  version: 2;
+  records: Array<
+    RecordItem & {
+      embeddedFiles?: {
+        moa?: ExportableStoredFile;
+        legalOpinion?: ExportableStoredFile;
+      };
+    }
+  >;
+}
+
 function normalizeMachineId(id: string): string {
   return id.trim().replace(/\s+/g, "").toUpperCase().substring(0, 50);
 }
 
 export function getMachineId(): string {
-  let machineId = localStorage.getItem("machine-id");
+  let machineId = readPersistentValue("machine-id");
   if (!machineId) {
     machineId = Math.random().toString(36).substring(2, 6).toUpperCase();
-    localStorage.setItem("machine-id", machineId);
+    writePersistentValue("machine-id", machineId);
   }
   return normalizeMachineId(machineId);
 }
@@ -24,7 +43,7 @@ export function getMachineId(): string {
 export function setMachineId(newId: string): boolean {
   const normalized = normalizeMachineId(newId);
   if (normalized.length < 2) return false;
-  localStorage.setItem("machine-id", normalized);
+  writePersistentValue("machine-id", normalized);
   return true;
 }
 
@@ -39,16 +58,16 @@ export function generateRecordId(): string {
   return Math.random().toString(36).substring(2, 9);
 }
 
-function counterKey(year: number): string {
-  return `cn-seq-${year}`;
+function counterKey(): string {
+  return "cn-seq-global";
 }
 
 function readCounter(key: string): number {
-  return parseInt(localStorage.getItem(key) ?? "0", 10) || 0;
+  return parseInt(readPersistentValue(key) ?? "0", 10) || 0;
 }
 
 function writeCounter(key: string, value: number): void {
-  localStorage.setItem(key, String(value));
+  writePersistentValue(key, String(value));
 }
 
 function getLowestAvailableSequence(usedSequences: Set<number>) {
@@ -89,11 +108,11 @@ function generateControlNumberForScope(
   year: number,
   machineId: string
 ): string {
-  const key = counterKey(year);
+  const key = counterKey();
   const usedSequences = new Set<number>();
   const maxFromRecords = records.reduce((max, record) => {
     const parsed = parseControlNumber(record.controlNumber);
-    if (!parsed || parsed.year !== year) {
+    if (!parsed) {
       return max;
     }
     usedSequences.add(parsed.sequence);
@@ -116,7 +135,7 @@ export function syncSequenceCounters(importedRecords: RecordItem[]): void {
   for (const record of importedRecords) {
     const parsed = parseControlNumber(record.controlNumber);
     if (!parsed) continue;
-    const key = counterKey(parsed.year);
+    const key = counterKey();
     const seq = parsed.sequence;
     if (seq > readCounter(key)) {
       writeCounter(key, seq);
@@ -211,13 +230,84 @@ export function mergeRecords(importedRecords: RecordItem[]): MergeResult {
   return result;
 }
 
-export function exportRecordsToJSON(): string {
-  return JSON.stringify(loadRecords(), null, 2);
+async function embedRecordFiles(record: RecordItem) {
+  const embeddedFiles: {
+    moa?: ExportableStoredFile;
+    legalOpinion?: ExportableStoredFile;
+  } = {};
+
+  if (record.moaType === "file" && record.moaValue?.startsWith("idb:")) {
+    const exportedMoa = await exportStoredFile(record.moaValue);
+    if (exportedMoa) {
+      embeddedFiles.moa = exportedMoa;
+    }
+  }
+
+  if (
+    record.legalOpinionType === "file" &&
+    record.legalOpinionValue?.startsWith("idb:")
+  ) {
+    const exportedLo = await exportStoredFile(record.legalOpinionValue);
+    if (exportedLo) {
+      embeddedFiles.legalOpinion = exportedLo;
+    }
+  }
+
+  return Object.keys(embeddedFiles).length > 0
+    ? { ...record, embeddedFiles }
+    : record;
 }
 
-export function importRecordsFromJSON(jsonString: string): MergeResult {
+export async function exportRecordsToJSON(records: RecordItem[] = loadRecords()): Promise<string> {
+  const exportedRecords = await Promise.all(records.map(embedRecordFiles));
+  const payload: PortableRecordExport = {
+    version: 2,
+    records: exportedRecords,
+  };
+  return JSON.stringify(payload, null, 2);
+}
+
+async function hydrateImportedRecords(
+  importedRecords: Array<
+    RecordItem & {
+      embeddedFiles?: {
+        moa?: ExportableStoredFile;
+        legalOpinion?: ExportableStoredFile;
+      };
+    }
+  >
+) {
+  return Promise.all(
+    importedRecords.map(async (record) => {
+      let hydratedRecord: RecordItem = { ...record };
+
+      if (record.embeddedFiles?.moa) {
+        hydratedRecord = {
+          ...hydratedRecord,
+          moaType: "file",
+          moaValue: await importStoredFile(record.embeddedFiles.moa),
+        };
+      }
+
+      if (record.embeddedFiles?.legalOpinion) {
+        hydratedRecord = {
+          ...hydratedRecord,
+          legalOpinionType: "file",
+          legalOpinionValue: await importStoredFile(record.embeddedFiles.legalOpinion),
+        };
+      }
+
+      delete (hydratedRecord as Record<string, unknown>).embeddedFiles;
+      return hydratedRecord;
+    })
+  );
+}
+
+export async function importRecordsFromJSON(jsonString: string): Promise<MergeResult> {
   try {
-    const importedRecords = JSON.parse(jsonString) as RecordItem[];
+    const parsed = JSON.parse(jsonString) as PortableRecordExport | RecordItem[];
+    const importedRecords = Array.isArray(parsed) ? parsed : parsed.records;
+
     if (!Array.isArray(importedRecords)) {
       return {
         imported: 0,
@@ -227,7 +317,9 @@ export function importRecordsFromJSON(jsonString: string): MergeResult {
         errors: ["Invalid JSON format: expected an array of records"],
       };
     }
-    return mergeRecords(importedRecords);
+
+    const hydratedRecords = await hydrateImportedRecords(importedRecords);
+    return mergeRecords(hydratedRecords);
   } catch (error) {
     return {
       imported: 0,

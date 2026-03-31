@@ -12,6 +12,7 @@ import {
   GraduationCap,
   School,
   ArrowUpDown,
+  AlertTriangle,
 } from "lucide-react";
 import { useNavigate } from "react-router";
 import {
@@ -31,6 +32,7 @@ import {
   saveActiveRecordFilters,
   RECORDS_UPDATED_EVENT,
   saveRecords,
+  isDocumentReferenceUsable,
   type RecordFilters,
   type RecordItem,
 } from "../records";
@@ -70,7 +72,10 @@ export function ViewRecords() {
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [openMessage, setOpenMessage] = useState("");
   const [allRecords, setAllRecords] = useState<RecordItem[]>(() => loadRecords());
-  const [sortBy, setSortBy] = useState<SortOption>("updated-desc");
+  const [sortBy, setSortBy] = useState<SortOption>("control-asc");
+  const [documentHealth, setDocumentHealth] = useState<
+    Record<string, { moa: boolean; lo: boolean }>
+  >({});
 
   useEffect(() => {
     const syncRecords = () => {
@@ -91,6 +96,33 @@ export function ViewRecords() {
   useEffect(() => {
     saveActiveRecordFilters(filters);
   }, [filters]);
+
+  useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      const entries = await Promise.all(
+        allRecords.map(async (record) => [
+          record.id,
+          {
+            moa: await isDocumentReferenceUsable(record.moaType, record.moaValue),
+            lo: await isDocumentReferenceUsable(
+              record.legalOpinionType,
+              record.legalOpinionValue
+            ),
+          },
+        ])
+      );
+
+      if (isActive) {
+        setDocumentHealth(Object.fromEntries(entries));
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [allRecords]);
 
   const filterOptions = useMemo(() => getRecordFilterOptions(allRecords), [allRecords]);
   const availableCourses = useMemo(() => {
@@ -571,6 +603,12 @@ export function ViewRecords() {
             </thead>
             <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
               {sortedRecords.map((record) => (
+                (() => {
+                  const docState = documentHealth[record.id];
+                  const hasBrokenMoa = Boolean(record.moaValue) && docState?.moa === false;
+                  const hasBrokenLo =
+                    Boolean(record.legalOpinionValue) && docState?.lo === false;
+                  return (
                 <tr
                   key={record.id}
                   onClick={() => navigate(`/record/${record.id}`)}
@@ -637,23 +675,38 @@ export function ViewRecords() {
                     <div className="flex items-center justify-center gap-2">
                       <button
                         onClick={() => openDocument(record.moaType, record.moaValue)}
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                          hasBrokenMoa
+                            ? "border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                            : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+                        }`}
                         title="Open MOA"
                       >
                         <Link2 className="h-3.5 w-3.5" />
                         MOA
+                        {hasBrokenMoa && <AlertTriangle className="h-3.5 w-3.5" />}
                       </button>
                       <button
                         onClick={() =>
                           openDocument(record.legalOpinionType, record.legalOpinionValue)
                         }
-                        className="inline-flex items-center gap-1 rounded-md border border-gray-200 dark:border-gray-700 px-2.5 py-1.5 text-xs text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
+                        className={`inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-gray-700 ${
+                          hasBrokenLo
+                            ? "border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300"
+                            : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200"
+                        }`}
                         title="Open Legal Opinion"
                       >
                         <Link2 className="h-3.5 w-3.5" />
                         LO
+                        {hasBrokenLo && <AlertTriangle className="h-3.5 w-3.5" />}
                       </button>
                     </div>
+                    {(hasBrokenMoa || hasBrokenLo) && (
+                      <div className="mt-2 text-center text-[11px] text-amber-700 dark:text-amber-300">
+                        Broken {hasBrokenMoa && hasBrokenLo ? "MOA/LO" : hasBrokenMoa ? "MOA" : "LO"} reference
+                      </div>
+                    )}
                   </td>
                   <td
                     className="px-6 py-4"
@@ -695,6 +748,8 @@ export function ViewRecords() {
                     </div>
                   </td>
                 </tr>
+                  );
+                })()
               ))}
             </tbody>
           </table>

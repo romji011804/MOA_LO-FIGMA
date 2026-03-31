@@ -1,3 +1,6 @@
+import { readPersistentValue, writePersistentValue } from "./persistentState.ts";
+import { hasStoredFile } from "./fileStorage.ts";
+
 export interface RecordItem {
   id: string;
   controlNumber: string;
@@ -155,7 +158,7 @@ function getFallbackMachineId() {
     return "MAIN";
   }
 
-  const storedMachineId = window.localStorage.getItem("machine-id");
+  const storedMachineId = readPersistentValue("machine-id");
   return storedMachineId ? normalizeMachineId(storedMachineId) : "MAIN";
 }
 
@@ -215,13 +218,11 @@ function normalizeControlNumberRecord(record: RecordItem): ParsedControlNumber {
 }
 
 function rebalanceControlNumbers(records: RecordItem[]) {
-  const usedSequencesByYear = new Map<number, Set<number>>();
+  const usedSequences = new Set<number>();
   let changed = false;
 
   const normalizedRecords = records.map((record) => {
     const parsed = normalizeControlNumberRecord(record);
-    const usedSequences = usedSequencesByYear.get(parsed.year) ?? new Set<number>();
-    usedSequencesByYear.set(parsed.year, usedSequences);
 
     let nextControlNumber = record.controlNumber;
 
@@ -363,23 +364,23 @@ export function loadRecords(): RecordItem[] {
   }
 
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
+    const raw = readPersistentValue(STORAGE_KEY);
     if (!raw) {
       const seededRecords = rebalanceControlNumbers(DEFAULT_RECORDS.map(ensureRecordShape)).records;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededRecords));
+      writePersistentValue(STORAGE_KEY, JSON.stringify(seededRecords));
       return seededRecords;
     }
 
     const parsed = JSON.parse(raw) as RecordItem[];
     if (!Array.isArray(parsed)) {
       const seededRecords = rebalanceControlNumbers(DEFAULT_RECORDS.map(ensureRecordShape)).records;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(seededRecords));
+      writePersistentValue(STORAGE_KEY, JSON.stringify(seededRecords));
       return seededRecords;
     }
 
     const normalized = rebalanceControlNumbers(parsed.map(ensureRecordShape));
     if (normalized.changed) {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized.records));
+      writePersistentValue(STORAGE_KEY, JSON.stringify(normalized.records));
     }
     return normalized.records;
   } catch {
@@ -393,7 +394,7 @@ export function saveRecords(records: RecordItem[]) {
   }
 
   const normalizedRecords = rebalanceControlNumbers(records.map(ensureRecordShape)).records;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizedRecords));
+  writePersistentValue(STORAGE_KEY, JSON.stringify(normalizedRecords));
   window.dispatchEvent(new CustomEvent(RECORDS_UPDATED_EVENT, { detail: normalizedRecords }));
 }
 
@@ -403,7 +404,7 @@ export function loadActiveRecordFilters(): RecordFilters {
   }
 
   try {
-    const raw = window.localStorage.getItem(FILTERS_STORAGE_KEY);
+    const raw = readPersistentValue(FILTERS_STORAGE_KEY);
     if (!raw) {
       return {};
     }
@@ -423,7 +424,7 @@ export function saveActiveRecordFilters(filters: RecordFilters) {
   const normalizedFilters = Object.fromEntries(
     Object.entries(filters).filter(([, value]) => value !== undefined && value !== "")
   );
-  window.localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(normalizedFilters));
+  writePersistentValue(FILTERS_STORAGE_KEY, JSON.stringify(normalizedFilters));
 }
 
 function hasDocumentReference(value?: string | null) {
@@ -436,6 +437,73 @@ export function hasLegalOpinion(record: RecordItem) {
 
 export function hasMoa(record: RecordItem) {
   return hasDocumentReference(record.moaValue);
+}
+
+export async function isDocumentReferenceUsable(
+  type: "file" | "link" | undefined,
+  value?: string | null
+) {
+  if (!hasDocumentReference(value)) {
+    return false;
+  }
+
+  const trimmedValue = value.trim();
+
+  if (type === "link") {
+    try {
+      const url = new URL(trimmedValue);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  if (trimmedValue.startsWith("idb:")) {
+    return hasStoredFile(trimmedValue);
+  }
+
+  if (trimmedValue.startsWith("data:")) {
+    return true;
+  }
+
+  try {
+    const url = new URL(trimmedValue);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export async function getValidatedRecordDocumentStats(records: RecordItem[]) {
+  let missingLegalOpinion = 0;
+  let missingMoa = 0;
+  let completeRecords = 0;
+
+  for (const record of records) {
+    const hasValidatedLo = await isDocumentReferenceUsable(
+      record.legalOpinionType,
+      record.legalOpinionValue
+    );
+    const hasValidatedMoa = await isDocumentReferenceUsable(record.moaType, record.moaValue);
+
+    if (!hasValidatedLo) {
+      missingLegalOpinion += 1;
+    }
+
+    if (!hasValidatedMoa) {
+      missingMoa += 1;
+    }
+
+    if (hasValidatedLo && hasValidatedMoa) {
+      completeRecords += 1;
+    }
+  }
+
+  return {
+    missingLegalOpinion,
+    missingMoa,
+    completeRecords,
+  };
 }
 
 export function deriveWorkflow(

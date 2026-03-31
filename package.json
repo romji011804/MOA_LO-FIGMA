@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "vite --port 5174",
     "build": "vite build",
+    "test": "node --experimental-specifier-resolution=node --test tests/control-number.test.mjs tests/app-regression.test.mjs",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5174 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "npm run build && electron-builder"

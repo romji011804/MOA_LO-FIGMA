@@ -1,5 +1,5 @@
 import { useNavigate, useParams } from "react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowLeft,
   School,
@@ -11,8 +11,9 @@ import {
   FileText,
   Scale,
   ExternalLink,
+  AlertTriangle,
 } from "lucide-react";
-import { loadRecords } from "../records";
+import { isDocumentReferenceUsable, loadRecords } from "../records";
 import { getFileBlob } from "../fileStorage";
 
 interface FieldProps {
@@ -51,6 +52,7 @@ export function ViewSingleRecord() {
   const navigate = useNavigate();
   const { id } = useParams();
   const [openMessage, setOpenMessage] = useState("");
+  const [documentHealth, setDocumentHealth] = useState({ moa: true, lo: true });
 
   const storedRecord = loadRecords().find((item) => item.id === id);
   const record = storedRecord
@@ -83,6 +85,33 @@ export function ViewSingleRecord() {
       </div>
     );
   }
+
+  useEffect(() => {
+    let isActive = true;
+
+    void (async () => {
+      const [moa, lo] = await Promise.all([
+        isDocumentReferenceUsable(storedRecord?.moaType, storedRecord?.moaValue),
+        isDocumentReferenceUsable(
+          storedRecord?.legalOpinionType,
+          storedRecord?.legalOpinionValue
+        ),
+      ]);
+
+      if (isActive) {
+        setDocumentHealth({ moa, lo });
+      }
+    })();
+
+    return () => {
+      isActive = false;
+    };
+  }, [
+    storedRecord?.legalOpinionType,
+    storedRecord?.legalOpinionValue,
+    storedRecord?.moaType,
+    storedRecord?.moaValue,
+  ]);
 
   const openDocument = async (type?: "file" | "link", value?: string, name?: string) => {
     if (!value) {
@@ -161,6 +190,30 @@ export function ViewSingleRecord() {
           {openMessage && (
             <p className="mb-4 text-sm text-amber-700 dark:text-amber-300">{openMessage}</p>
           )}
+          {((storedRecord?.moaValue && !documentHealth.moa) ||
+            (storedRecord?.legalOpinionValue && !documentHealth.lo)) && (
+            <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+              <div className="flex items-center gap-2 font-medium">
+                <AlertTriangle className="h-4 w-4" />
+                Broken document reference detected
+              </div>
+              <p className="mt-1">
+                {storedRecord?.moaValue && !documentHealth.moa
+                  ? "MOA"
+                  : ""}
+                {storedRecord?.moaValue &&
+                !documentHealth.moa &&
+                storedRecord?.legalOpinionValue &&
+                !documentHealth.lo
+                  ? " and "
+                  : ""}
+                {storedRecord?.legalOpinionValue && !documentHealth.lo
+                  ? "Legal Opinion"
+                  : ""}{" "}
+                needs to be re-uploaded or replaced with a working link.
+              </p>
+            </div>
+          )}
           <div className="space-y-4">
             <Field
               icon={<School className="w-5 h-5 text-gray-600 dark:text-gray-400" />}
@@ -199,18 +252,34 @@ export function ViewSingleRecord() {
             />
 
             <Field
-              icon={<FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />}
+              icon={
+                documentHealth.moa ? (
+                  <FileText className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                )
+              }
               label="Memorandum of Agreement"
-              value={storedRecord?.moaFileName || record.moa}
+              value={`${storedRecord?.moaFileName || record.moa}${
+                storedRecord?.moaValue && !documentHealth.moa ? " (Broken)" : ""
+              }`}
               isLink
               onClick={() =>
                 openDocument(storedRecord?.moaType, storedRecord?.moaValue, storedRecord?.moaFileName)
               }
             />
             <Field
-              icon={<Scale className="w-5 h-5 text-purple-600 dark:text-purple-400" />}
+              icon={
+                documentHealth.lo ? (
+                  <Scale className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                ) : (
+                  <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                )
+              }
               label="Legal Opinion"
-              value={storedRecord?.legalOpinionFileName || record.legalOpinion}
+              value={`${storedRecord?.legalOpinionFileName || record.legalOpinion}${
+                storedRecord?.legalOpinionValue && !documentHealth.lo ? " (Broken)" : ""
+              }`}
               isLink
               onClick={() =>
                 openDocument(

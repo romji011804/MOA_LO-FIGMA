@@ -4,6 +4,7 @@ const fs = require('fs');
 
 let mainWindow;
 let autoUpdater = null;
+const APP_STORAGE_FILE = 'app-storage.json';
 
 // Try to load electron-updater, but don't fail if it's not available
 try {
@@ -119,6 +120,34 @@ function sendStatusToWindow(text) {
   }
 }
 
+function getAppStoragePath() {
+  return path.join(app.getPath('userData'), APP_STORAGE_FILE);
+}
+
+function readAppStorage() {
+  try {
+    const filePath = getAppStoragePath();
+    if (!fs.existsSync(filePath)) {
+      return {};
+    }
+    const raw = fs.readFileSync(filePath, 'utf8');
+    if (!raw.trim()) {
+      return {};
+    }
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch (error) {
+    console.error('Failed to read app storage:', error);
+    return {};
+  }
+}
+
+function writeAppStorage(data) {
+  const filePath = getAppStoragePath();
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+}
+
 // IPC Handlers
 ipcMain.handle('app:getVersion', () => {
   return app.getVersion();
@@ -126,6 +155,27 @@ ipcMain.handle('app:getVersion', () => {
 
 ipcMain.handle('app:getDataPath', () => {
   return app.getPath('userData');
+});
+
+ipcMain.on('storage:readSync', (event, key) => {
+  const storage = readAppStorage();
+  event.returnValue = Object.prototype.hasOwnProperty.call(storage, key)
+    ? storage[key]
+    : null;
+});
+
+ipcMain.handle('storage:write', async (event, { key, value }) => {
+  const storage = readAppStorage();
+  storage[key] = value;
+  writeAppStorage(storage);
+  return { success: true };
+});
+
+ipcMain.handle('storage:remove', async (event, key) => {
+  const storage = readAppStorage();
+  delete storage[key];
+  writeAppStorage(storage);
+  return { success: true };
 });
 
 ipcMain.handle('dialog:showSaveDialog', async (event, options = {}) => {

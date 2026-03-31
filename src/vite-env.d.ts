@@ -3,6 +3,9 @@
 declare global {
   interface Window {
     electronAPI?: {
+      readPersistentStorageSync: (key: string) => string | null;
+      writePersistentStorage: (key: string, value: string) => Promise<{ success: boolean }>;
+      removePersistentStorage: (key: string) => Promise<{ success: boolean }>;
       minimizeWindow: () => void;
       maximizeWindow: () => void;
       closeWindow: () => void;

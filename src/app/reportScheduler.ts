@@ -1,4 +1,5 @@
 import ExcelJS, { type Row, type Worksheet } from "exceljs";
+import { readPersistentValue, writePersistentValue } from "./persistentState.ts";
 import {
   filterRecords,
   getRecordDocumentStats,
@@ -8,7 +9,7 @@ import {
   loadRecords,
   type RecordFilters,
   type RecordItem,
-} from "./records";
+} from "./records.ts";
 
 export interface ReportSettings {
   enabled: boolean;
@@ -47,7 +48,7 @@ export const DEFAULT_SETTINGS: ReportSettings = {
 
 export function loadSettings(): ReportSettings {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
+    const raw = readPersistentValue(SETTINGS_KEY);
     if (!raw) return { ...DEFAULT_SETTINGS };
     return { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<ReportSettings>) };
   } catch {
@@ -56,12 +57,12 @@ export function loadSettings(): ReportSettings {
 }
 
 export function saveSettings(settings: ReportSettings): void {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  writePersistentValue(SETTINGS_KEY, JSON.stringify(settings));
 }
 
 export function loadReports(): GeneratedReport[] {
   try {
-    const raw = localStorage.getItem(REPORTS_KEY);
+    const raw = readPersistentValue(REPORTS_KEY);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
@@ -71,7 +72,7 @@ export function loadReports(): GeneratedReport[] {
 }
 
 export function saveReports(reports: GeneratedReport[]): void {
-  localStorage.setItem(REPORTS_KEY, JSON.stringify(reports));
+  writePersistentValue(REPORTS_KEY, JSON.stringify(reports));
 }
 
 function quarterInfo(month: number): { label: string; startMonth: number; lastMonth: number } {

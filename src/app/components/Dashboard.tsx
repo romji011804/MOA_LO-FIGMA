@@ -4,6 +4,7 @@ import { useNavigate } from "react-router";
 import {
   RECORDS_UPDATED_EVENT,
   getRecordDocumentStats,
+  getValidatedRecordDocumentStats,
   loadRecords,
   type RecordItem,
 } from "../records";
@@ -59,6 +60,7 @@ function AlertCard({ title, count, icon, color }: AlertCardProps) {
 export function Dashboard() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<RecordItem[]>(() => loadRecords());
+  const [validatedStats, setValidatedStats] = useState(() => getRecordDocumentStats(loadRecords()));
 
   useEffect(() => {
     const syncRecords = () => {
@@ -76,10 +78,24 @@ export function Dashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    let isActive = true;
+
+    void getValidatedRecordDocumentStats(records).then((stats) => {
+      if (isActive) {
+        setValidatedStats(stats);
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [records]);
+
   const totalRecords = records.length;
   const ongoingRecords = records.filter((record) => record.status === "Ongoing").length;
   const completedRecords = records.filter((record) => record.status === "Completed").length;
-  const { missingLegalOpinion, missingMoa, completeRecords } = getRecordDocumentStats(records);
+  const { missingLegalOpinion, missingMoa, completeRecords } = validatedStats;
 
   const getStatusColor = (status: string) => {
     switch (status) {
