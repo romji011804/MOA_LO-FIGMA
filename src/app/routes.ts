@@ -6,6 +6,8 @@ import { ViewRecords } from "./components/ViewRecords";
 import { ViewSingleRecord } from "./components/ViewSingleRecord";
 import { ImportExport } from "./components/ImportExport";
 import { Reports } from "./components/Reports";
+import { moaLoRoutes } from "../modules/moa-lo/routes";
+import { ojtRoutes } from "../modules/ojt/routes";
 
 export const router = createHashRouter([
   {
@@ -18,6 +20,8 @@ export const router = createHashRouter([
       { path: "record/:id", Component: ViewSingleRecord },
       { path: "import-export", Component: ImportExport },
       { path: "reports", Component: Reports },
+      ...moaLoRoutes,
+      ...ojtRoutes,
     ],
   },
 ]);

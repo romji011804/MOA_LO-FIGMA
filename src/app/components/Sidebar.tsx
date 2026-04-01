@@ -1,7 +1,19 @@
 import { NavLink } from "react-router";
-import { LayoutDashboard, Plus, FileText, Moon, Sun, ArrowLeftRight, BarChart2 } from "lucide-react";
+import {
+  LayoutDashboard,
+  Plus,
+  FileText,
+  Moon,
+  Sun,
+  ArrowLeftRight,
+  BarChart2,
+  GraduationCap,
+  QrCode,
+  FileBadge2,
+} from "lucide-react";
 import { useTheme } from "next-themes";
 import { useEffect, useState } from "react";
+import { ENABLE_OJT_MODULE } from "../../shared/config/featureFlags";
 
 export function Sidebar() {
   const { theme, setTheme } = useTheme();
@@ -11,12 +23,34 @@ export function Sidebar() {
     setMounted(true);
   }, []);
 
-  const menuItems = [
-    { path: "/", label: "Dashboard", icon: LayoutDashboard },
-    { path: "/add-record", label: "Add Record", icon: Plus },
-    { path: "/view-records", label: "View Records", icon: FileText },
-    { path: "/import-export", label: "Import / Export", icon: ArrowLeftRight },
-    { path: "/reports", label: "Reports", icon: BarChart2 },
+  const moduleGroups = [
+    {
+      title: "Shared",
+      items: [{ path: "/", label: "MOA / LO Dashboard", icon: LayoutDashboard }],
+    },
+    {
+      title: "MOA / LO",
+      items: [
+        { path: "/moa-lo/add-record", label: "Add Record", icon: Plus },
+        { path: "/moa-lo/view-records", label: "View Records", icon: FileText },
+        { path: "/moa-lo/import-export", label: "Import / Export", icon: ArrowLeftRight },
+        { path: "/moa-lo/reports", label: "Reports", icon: BarChart2 },
+      ],
+    },
+    ...(ENABLE_OJT_MODULE
+      ? [
+          {
+            title: "OJT",
+            items: [
+              { path: "/ojt", label: "OJT Dashboard", icon: GraduationCap },
+              { path: "/ojt/add-record", label: "Add OJT Record", icon: Plus },
+              { path: "/ojt/view-records", label: "OJT Records", icon: FileBadge2 },
+              { path: "/ojt/qr-codes", label: "QR Codes", icon: QrCode },
+              { path: "/ojt/reports", label: "OJT Reports", icon: BarChart2 },
+            ],
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -27,23 +61,30 @@ export function Sidebar() {
         </h1>
       </div>
 
-      <nav className="flex-1 px-4 py-5">
-        {menuItems.map((item) => (
-          <NavLink
-            key={item.path}
-            to={item.path}
-            end={item.path === "/"}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-xl mb-1.5 border transition-all duration-200 ${
-                isActive
-                  ? "bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800 shadow-sm"
-                  : "text-gray-700 dark:text-gray-300 border-transparent hover:bg-gray-50 dark:hover:bg-gray-800 hover:border-gray-200 dark:hover:border-gray-700"
-              }`
-            }
-          >
-            <item.icon className="w-5 h-5" />
-            <span>{item.label}</span>
-          </NavLink>
+      <nav className="flex-1 space-y-5 px-4 py-5">
+        {moduleGroups.map((group) => (
+          <div key={group.title}>
+            <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-[0.16em] text-gray-400">
+              {group.title}
+            </p>
+            {group.items.map((item) => (
+              <NavLink
+                key={item.path}
+                to={item.path}
+                end={item.path === "/" || item.path === "/ojt"}
+                className={({ isActive }) =>
+                  `mb-1.5 flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200 ${
+                    isActive
+                      ? "border-blue-200 bg-blue-50 text-blue-700 shadow-sm dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                      : "border-transparent text-gray-700 hover:border-gray-200 hover:bg-gray-50 dark:text-gray-300 dark:hover:border-gray-700 dark:hover:bg-gray-800"
+                  }`
+                }
+              >
+                <item.icon className="h-5 w-5" />
+                <span>{item.label}</span>
+              </NavLink>
+            ))}
+          </div>
         ))}
       </nav>
 

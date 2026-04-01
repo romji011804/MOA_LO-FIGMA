@@ -112,10 +112,10 @@ export function Dashboard() {
     <div className="p-8 space-y-8">
       <div className="mb-8">
         <h1 className="text-3xl font-semibold text-gray-900 dark:text-white mb-2">
-          Dashboard Statistics
+          MOA & LO Dashboard
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Memorandum of Agreement and Legal Opinion Overview
+          Memorandum of Agreement and Legal Opinion overview only
         </p>
       </div>
 
